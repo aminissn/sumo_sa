@@ -50,6 +50,8 @@
 #include "MSRoutingEngine.h"
 #include "MSDevice_Friction.h"
 #include "MSDevice_FCDReplay.h"
+#include "MSDevice_Navi.h"
+#include "MSNaviEngine.h"
 #include "MSDevice.h"
 
 
@@ -94,6 +96,7 @@ MSDevice::insertOptions(OptionsCont& oc) {
     MSDevice_Vehroutes::insertOptions(oc);
     MSDevice_Friction::insertOptions(oc);
     MSDevice_FCDReplay::insertOptions(oc);
+    MSDevice_Navi::insertOptions(oc);
 
     MSTransportableDevice_Routing::insertOptions(oc);
     MSTransportableDevice_FCD::insertOptions(oc);
@@ -106,6 +109,7 @@ bool
 MSDevice::checkOptions(OptionsCont& oc) {
     bool ok = true;
     ok &= MSDevice_Routing::checkOptions(oc);
+    ok &= MSDevice_Navi::checkOptions(oc);
     return ok;
 }
 
@@ -132,6 +136,7 @@ MSDevice::buildVehicleDevices(SUMOVehicle& v, std::vector<MSVehicleDevice*>& int
     MSDevice_GLOSA::buildVehicleDevices(v, into);
     MSDevice_Friction::buildVehicleDevices(v, into);
     MSDevice_FCDReplay::buildVehicleDevices(v, into);
+    MSDevice_Navi::buildVehicleDevices(v, into);
 }
 
 
@@ -148,6 +153,7 @@ MSDevice::buildTransportableDevices(MSTransportable& p, std::vector<MSTransporta
 void
 MSDevice::cleanupAll() {
     MSRoutingEngine::cleanup();
+    MSNaviEngine::cleanup();
     MSDevice_Tripinfo::cleanup();
     MSDevice_FCD::cleanup();
     MSDevice_Taxi::cleanup();

@@ -1196,7 +1196,7 @@ MSFrame::setMSGlobals(OptionsCont& oc) {
         MSGlobals::gDefaultEmergencyDecel = StringUtils::toDouble(defaultEmergencyDecelOption);
     }
     MSGlobals::gNumSimThreads = oc.getInt("threads");
-    MSGlobals::gNumThreads = MAX2(MSGlobals::gNumSimThreads, oc.getInt("device.rerouting.threads"));
+    MSGlobals::gNumThreads = MAX2(MSGlobals::gNumSimThreads, MAX2(oc.getInt("device.rerouting.threads"), oc.getInt("device.navi.threads")));
 
     MSGlobals::gEmergencyDecelWarningThreshold = oc.getFloat("emergencydecel.warning-threshold");
     MSGlobals::gMinorPenalty = oc.getFloat("weights.minor-penalty");

@@ -33,6 +33,10 @@ set(microsim_devices_STAT_SRCS
    MSDevice_FCD.h
    MSDevice_FCDReplay.cpp
    MSDevice_FCDReplay.h
+   MSDevice_Navi.cpp
+   MSDevice_Navi.h
+   MSNaviEngine.cpp
+   MSNaviEngine.h
    MSDevice_ElecHybrid.cpp
    MSDevice_ElecHybrid.h
    MSDevice_Taxi.cpp
