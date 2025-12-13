@@ -217,6 +217,9 @@ private:
     /// @brief Mutex for accessing route cache
     static FXMutex myRouteCacheMutex;
     
+    /// @brief Mutex for accessing historical data (travel times, routers)
+    static FXMutex myDataMutex;
+    
     /// @brief Route cache for common OD pairs
     static std::map<std::pair<const MSEdge*, const MSEdge*>, ConstMSRoutePtr> myCachedRoutes;
 #endif

@@ -45,6 +45,7 @@
 #include <microsim/MSRoute.h>
 #include <microsim/MSVehicle.h>
 #include <microsim/MSEdgeControl.h>
+#include <microsim/MSRouterDefs.h>
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -73,6 +74,7 @@ SUMOAbstractRouter<MSEdge, SUMOVehicle>* MSNaviEngine::myKShortestRouter = nullp
 bool MSNaviEngine::myInitialized = false;
 #ifdef HAVE_FOX
 FXMutex MSNaviEngine::myRouteCacheMutex;
+FXMutex MSNaviEngine::myDataMutex;
 std::map<std::pair<const MSEdge*, const MSEdge*>, ConstMSRoutePtr> MSNaviEngine::myCachedRoutes;
 #endif
 
@@ -135,11 +137,20 @@ MSNaviEngine::initEdgeWeights(SUMOVehicleClass svc) {
     // Initialize historical travel times for all edges
     const MSEdgeVector& edges = MSNet::getInstance()->getEdgeControl().getEdges();
     for (const MSEdge* edge : edges) {
+        if (edge == nullptr) {
+            continue;
+        }
         if (myHistoricalTravelTimes.find(edge) == myHistoricalTravelTimes.end()) {
             // Initialize with empty deque
             myHistoricalTravelTimes[edge] = std::deque<IntervalData>();
             // Fill with initial data based on edge's free-flow travel time
-            const double freeFlowTT = edge->getLength() / edge->getSpeedLimit();
+            // Protect against division by zero for special edges
+            const double speedLimit = edge->getSpeedLimit();
+            const double length = edge->getLength();
+            double freeFlowTT = 1.0; // Default minimum
+            if (speedLimit > 0 && length > 0) {
+                freeFlowTT = length / speedLimit;
+            }
             IntervalData initialData;
             initialData.totalTravelTime = freeFlowTT;
             initialData.vehicleCount = 1;
@@ -156,13 +167,23 @@ MSNaviEngine::updateTravelTimes(SUMOTime currentTime) {
     // Save current interval data to history
     for (auto& pair : myCurrentIntervalData) {
         const MSEdge* edge = pair.first;
+        if (edge == nullptr) {
+            continue;
+        }
         IntervalData& data = pair.second;
         
         // Calculate average for this interval
         double avgTT = data.getAverage();
         if (avgTT == 0.0) {
             // No data, use free-flow travel time
-            avgTT = edge->getLength() / edge->getSpeedLimit();
+            // Protect against division by zero
+            const double speedLimit = edge->getSpeedLimit();
+            const double length = edge->getLength();
+            if (speedLimit > 0 && length > 0) {
+                avgTT = length / speedLimit;
+            } else {
+                avgTT = 1.0; // Minimum travel time
+            }
         }
         
         // Add to history
@@ -212,15 +233,30 @@ MSNaviEngine::getEffort(const MSEdge* const e, const SUMOVehicle* const v, doubl
 
 double
 MSNaviEngine::getAverageTravelTime(const MSEdge* edge, int intervals) {
+    // Safety check
+    if (edge == nullptr) {
+        return 1.0;
+    }
+    
+    // Helper to get safe free-flow travel time
+    auto getFreeFlowTT = [](const MSEdge* e) -> double {
+        const double speedLimit = e->getSpeedLimit();
+        const double length = e->getLength();
+        if (speedLimit > 0 && length > 0) {
+            return length / speedLimit;
+        }
+        return 1.0; // Minimum default
+    };
+    
     auto it = myHistoricalTravelTimes.find(edge);
     if (it == myHistoricalTravelTimes.end()) {
         // No history, return free-flow travel time
-        return edge->getLength() / edge->getSpeedLimit();
+        return getFreeFlowTT(edge);
     }
     
     const std::deque<IntervalData>& history = it->second;
     if (history.empty()) {
-        return edge->getLength() / edge->getSpeedLimit();
+        return getFreeFlowTT(edge);
     }
     
     // Calculate average over the last 'intervals' intervals
@@ -242,6 +278,11 @@ MSNaviEngine::getAverageTravelTime(const MSEdge* edge, int intervals) {
 ConstMSRoutePtr
 MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTime,
                                   double& newCost, const bool onInit) {
+    // Safety check
+    if (vehicle.getRoute().size() == 0) {
+        return nullptr;
+    }
+    
     if (myRouterProvider == nullptr) {
         // Initialize router similar to MSRoutingEngine
         OptionsCont& oc = OptionsCont::getOptions();
@@ -301,25 +342,27 @@ MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTim
     const MSEdge* source = *vehicle.getRoute().begin();
     const MSEdge* dest = vehicle.getRoute().getLastEdge();
     
-    if (source == nullptr || dest == nullptr) {
+    if (source == nullptr || dest == nullptr || source == dest) {
         return nullptr;
     }
     
-    // Check route cache first (for TAZ connectors)
-    if (source->isTazConnector() && dest->isTazConnector()) {
+    // Check route cache (for TAZ connectors and frequently used OD pairs)
 #ifdef HAVE_FOX
+    {
         FXMutexLock lock(myRouteCacheMutex);
-#endif
         auto cacheKey = std::make_pair(source, dest);
         auto cacheIt = myCachedRoutes.find(cacheKey);
-        if (cacheIt != myCachedRoutes.end()) {
+        if (cacheIt != myCachedRoutes.end() && cacheIt->second != nullptr && cacheIt->second->size() > 0) {
             // Calculate cost for cached route
             for (const MSEdge* e : cacheIt->second->getEdges()) {
-                newCost += getEffort(e, &vehicle, currentTime);
+                if (e != nullptr) {
+                    newCost += getEffort(e, &vehicle, currentTime);
+                }
             }
             return cacheIt->second;
         }
     }
+#endif
     
     // Find k-shortest paths
     std::vector<RouteAlternative> alternatives = findKShortestPaths(source, dest, vehicle, currentTime, myMaxAlternatives);
@@ -344,16 +387,18 @@ MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTim
         }
     }
     
-    // Cache route for TAZ connectors
-    if (source->isTazConnector() && dest->isTazConnector()) {
+    // Cache route (limit cache size to avoid memory issues)
 #ifdef HAVE_FOX
+    {
         FXMutexLock lock(myRouteCacheMutex);
-#endif
-        auto cacheKey = std::make_pair(source, dest);
-        if (myCachedRoutes.find(cacheKey) == myCachedRoutes.end()) {
-            myCachedRoutes[cacheKey] = selectedRoute;
+        if (myCachedRoutes.size() < 10000) { // Limit cache size
+            auto cacheKey = std::make_pair(source, dest);
+            if (myCachedRoutes.find(cacheKey) == myCachedRoutes.end()) {
+                myCachedRoutes[cacheKey] = selectedRoute;
+            }
         }
     }
+#endif
     
     return selectedRoute;
 }
@@ -361,52 +406,63 @@ MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTim
 void
 MSNaviEngine::reroute(SUMOVehicle& vehicle, const SUMOTime currentTime, const std::string& info,
                      const bool onInit) {
-    initEdgeWeights(vehicle.getVClass());
-    
-#ifdef HAVE_FOX
-    // Use parallel routing if thread pool is available
-    MFXWorkerThread::Pool& threadPool = MSNet::getInstance()->getEdgeControl().getThreadPool();
-    if (threadPool.size() > 0) {
-        threadPool.add(new NaviRoutingTask(vehicle, currentTime, info, onInit));
-        return;
-    }
-#endif
-    
-    // Sequential routing (fallback)
-    // Calculate cost of current remaining route
-    double oldCost = 0.0;
-    if (!onInit && vehicle.hasDeparted()) {
-        ConstMSEdgeVector remainingEdges(vehicle.getCurrentRouteEdge(), vehicle.getRoute().end());
-        if (!remainingEdges.empty()) {
-            for (const MSEdge* e : remainingEdges) {
-                oldCost += getEffort(e, &vehicle, currentTime);
+    try {
+        initEdgeWeights(vehicle.getVClass());
+        
+        // Note: Parallel routing via thread pool is disabled for now due to thread-safety concerns
+        // with shared static state (myHistoricalTravelTimes, myRouterProvider).
+        // The k-shortest path algorithm with penalty method is not thread-safe.
+        // TODO: Implement proper thread-safe routing with thread-local routers
+        
+        // Safety check
+        if (vehicle.getRoute().size() == 0) {
+            return;
+        }
+        
+        // Sequential routing (fallback)
+        // Calculate cost of current remaining route
+        double oldCost = 0.0;
+        if (!onInit && vehicle.hasDeparted()) {
+            ConstMSEdgeVector remainingEdges(vehicle.getCurrentRouteEdge(), vehicle.getRoute().end());
+            if (!remainingEdges.empty()) {
+                for (const MSEdge* e : remainingEdges) {
+                    if (e != nullptr) {
+                        oldCost += getEffort(e, &vehicle, currentTime);
+                    }
+                }
             }
         }
-    }
-    
-    // Find and select new route
-    double newCost = 0.0;
-    ConstMSRoutePtr selectedRoute = findAndSelectRoute(vehicle, currentTime, newCost, onInit);
-    
-    if (selectedRoute == nullptr) {
-        return;
-    }
-    
-    // Check threshold before rerouting
-    double thresholdFactor = vehicle.getFloatParam("device.navi.threshold.factor", true, 1.0);
-    double thresholdTime = STEPS2TIME(vehicle.getTimeParam("device.navi.threshold.constant", true, 0));
-    
-    bool shouldReroute = onInit;
-    if (!onInit && oldCost > 0) {
-        if (newCost == 0) {
-            shouldReroute = true;
-        } else {
-            shouldReroute = (oldCost / newCost > thresholdFactor) && (oldCost - newCost > thresholdTime);
+        
+        // Find and select new route
+        double newCost = 0.0;
+        ConstMSRoutePtr selectedRoute = findAndSelectRoute(vehicle, currentTime, newCost, onInit);
+        
+        if (selectedRoute == nullptr || selectedRoute->size() == 0) {
+            return;
         }
-    }
-    
-    if (shouldReroute) {
-        vehicle.replaceRoute(selectedRoute, info, onInit);
+        
+        // Check threshold before rerouting
+        double thresholdFactor = vehicle.getFloatParam("device.navi.threshold.factor", true, 1.0);
+        double thresholdTime = STEPS2TIME(vehicle.getTimeParam("device.navi.threshold.constant", true, 0));
+        
+        bool shouldReroute = onInit;
+        if (!onInit && oldCost > 0) {
+            if (newCost == 0) {
+                shouldReroute = true;
+            } else {
+                shouldReroute = (oldCost / newCost > thresholdFactor) && (oldCost - newCost > thresholdTime);
+            }
+        }
+        
+        if (shouldReroute) {
+            vehicle.replaceRoute(selectedRoute, info, onInit);
+        }
+    } catch (const ProcessError& e) {
+        WRITE_WARNING("Navi routing error for vehicle '" + vehicle.getID() + "': " + e.what());
+    } catch (const std::exception& e) {
+        WRITE_WARNING("Navi routing exception for vehicle '" + vehicle.getID() + "': " + e.what());
+    } catch (...) {
+        WRITE_WARNING("Navi routing unknown error for vehicle '" + vehicle.getID() + "'");
     }
 }
 
@@ -414,7 +470,38 @@ std::vector<MSNaviEngine::RouteAlternative>
 MSNaviEngine::findKShortestPaths(const MSEdge* from, const MSEdge* to,
                                  SUMOVehicle& vehicle, const SUMOTime currentTime, int k) {
     std::vector<RouteAlternative> alternatives;
+    
+    // Safety checks
+    if (from == nullptr || to == nullptr || from == to || k < 1) {
+        return alternatives;
+    }
+    
     alternatives.reserve(k); // Pre-allocate space
+    
+    // For k=1, just use the main router (faster, no penalty overhead)
+    if (k == 1) {
+        if (myRouterProvider != nullptr) {
+            ConstMSEdgeVector edges;
+            try {
+                auto& router = myRouterProvider->getVehicleRouter(vehicle.getVClass());
+                bool found = router.compute(from, to, &vehicle, currentTime, edges);
+                if (found && !edges.empty()) {
+                    double cost = 0.0;
+                    for (const MSEdge* e : edges) {
+                        cost += getEffort(e, &vehicle, currentTime);
+                    }
+                    StopParVector stops;
+                    MSRoute* route = new MSRoute("navi_" + vehicle.getID() + "_0", edges, false, nullptr, stops);
+                    alternatives.push_back(RouteAlternative(ConstMSRoutePtr(route), cost));
+                }
+            } catch (...) {
+                // Fall through to k-shortest path finding
+            }
+        }
+        if (!alternatives.empty()) {
+            return alternatives;
+        }
+    }
     
     // Map to store penalties for edges (for k-shortest path finding)
     std::map<const MSEdge*, double> penalties;
@@ -422,33 +509,60 @@ MSNaviEngine::findKShortestPaths(const MSEdge* from, const MSEdge* to,
     // Set thread-local penalties pointer
     g_penalties = &penalties;
     
-    // Create or reuse persistent router for k-shortest paths
-    // This avoids creating/destroying routers which would print statistics
-    if (myKShortestRouter == nullptr) {
-        myKShortestRouter = new DijkstraRouter<MSEdge, SUMOVehicle>(
-            MSEdge::getAllEdges(), true, penalizedEffortFunc, nullptr, false, nullptr, true);
-    }
-    
-    // Cast to the specific router type we need
-    DijkstraRouter<MSEdge, SUMOVehicle>* router = 
-        static_cast<DijkstraRouter<MSEdge, SUMOVehicle>*>(myKShortestRouter);
-    
-    int routeIndex = 0;
-    const int maxIterations = k * 2; // Reduced from k*3 for better performance
-    int consecutiveDuplicates = 0;
-    
-    for (int i = 0; i < maxIterations && (int)alternatives.size() < k; ++i) {
-        ConstMSEdgeVector edges;
-        bool found = router->compute(from, to, &vehicle, currentTime, edges);
-        
-        if (!found || edges.empty()) {
-            break;
+    try {
+        // Create or reuse persistent router for k-shortest paths
+        // This avoids creating/destroying routers which would print statistics
+        // Use A* if configured, otherwise Dijkstra
+        if (myKShortestRouter == nullptr) {
+            OptionsCont& oc = OptionsCont::getOptions();
+            const std::string routingAlgorithm = oc.getString("routing-algorithm");
+            
+            if (routingAlgorithm == "astar") {
+                // A* is faster for point-to-point queries on road networks
+                typedef AStarRouter<MSEdge, SUMOVehicle, MSMapMatcher> AStar;
+                myKShortestRouter = new AStar(MSEdge::getAllEdges(), true, penalizedEffortFunc, nullptr, true);
+            } else {
+                // Default to Dijkstra (works for any network)
+                myKShortestRouter = new DijkstraRouter<MSEdge, SUMOVehicle>(
+                    MSEdge::getAllEdges(), true, penalizedEffortFunc, nullptr, false, nullptr, true);
+            }
         }
         
-        // Fast duplicate check: compare routes directly (vector comparison is optimized)
+        // Use the router through the base class interface
+        SUMOAbstractRouter<MSEdge, SUMOVehicle>* router = myKShortestRouter;
+        
+        int routeIndex = 0;
+        const int maxIterations = k + 2; // Reduced iterations - stop after k+2 attempts
+        int consecutiveDuplicates = 0;
+        
+        for (int i = 0; i < maxIterations && (int)alternatives.size() < k; ++i) {
+            ConstMSEdgeVector edges;
+            bool found = false;
+            try {
+                found = router->compute(from, to, &vehicle, currentTime, edges);
+            } catch (...) {
+                // Router compute failed, skip this iteration
+                break;
+            }
+            
+            if (!found || edges.empty()) {
+                break;
+            }
+        
+        // Fast duplicate check using hash-like comparison (size + first + last edge)
         bool isDuplicate = false;
+        const size_t edgeCount = edges.size();
+        const MSEdge* firstEdge = edges.front();
+        const MSEdge* lastEdge = edges.back();
+        
         for (const auto& alt : alternatives) {
-            if (alt.route->getEdges() == edges) {
+            const ConstMSEdgeVector& altEdges = alt.route->getEdges();
+            // Quick rejection: different size or different endpoints
+            if (altEdges.size() != edgeCount || altEdges.front() != firstEdge || altEdges.back() != lastEdge) {
+                continue;
+            }
+            // Full comparison only if quick check passes
+            if (altEdges == edges) {
                 isDuplicate = true;
                 break;
             }
@@ -457,12 +571,14 @@ MSNaviEngine::findKShortestPaths(const MSEdge* from, const MSEdge* to,
         if (isDuplicate) {
             consecutiveDuplicates++;
             // If too many consecutive duplicates, break early
-            if (consecutiveDuplicates > 3) {
+            if (consecutiveDuplicates > 2) {
                 break;
             }
-            // If duplicate, add larger penalty to try to find different route
-            for (const MSEdge* e : edges) {
-                penalties[e] += getEffort(e, &vehicle, currentTime) * 0.5;
+            // If duplicate, add larger penalty to divergence edges
+            // Only penalize first few edges to find different paths faster
+            const size_t penalizeCount = MIN2(edges.size(), (size_t)5);
+            for (size_t j = 0; j < penalizeCount; ++j) {
+                penalties[edges[j]] += getEffort(edges[j], &vehicle, currentTime) * 0.3;
             }
             continue;
         }
@@ -482,12 +598,18 @@ MSNaviEngine::findKShortestPaths(const MSEdge* from, const MSEdge* to,
         alternatives.push_back(RouteAlternative(routePtr, cost));
         routeIndex++;
         
-        // Add penalty to edges in this route (except the last one) to find different paths
-        // Use a smaller penalty to avoid over-penalizing
-        const double penaltyFactor = 0.05;
-        for (size_t j = 0; j < edges.size() - 1; ++j) {
+        // Add penalty to first few edges to find different paths faster
+        // Penalizing all edges is expensive and not necessary
+        const size_t penalizeCount = MIN2(edges.size() - 1, (size_t)10);
+        const double penaltyFactor = 0.1;
+        for (size_t j = 0; j < penalizeCount; ++j) {
             penalties[edges[j]] += cost * penaltyFactor;
         }
+    }
+    } catch (const std::exception& e) {
+        WRITE_WARNING("findKShortestPaths error: " + std::string(e.what()));
+    } catch (...) {
+        WRITE_WARNING("findKShortestPaths unknown error");
     }
     
     // Clear thread-local penalties pointer
@@ -609,52 +731,69 @@ MSNaviEngine::waitForAll() {
 // ---------------------------------------------------------------------------
 void
 MSNaviEngine::NaviRoutingTask::run(MFXWorkerThread* context) {
-    // Calculate cost of current remaining route
-    double oldCost = 0.0;
-    if (!myOnInit && myVehicle.hasDeparted()) {
-        ConstMSEdgeVector remainingEdges(myVehicle.getCurrentRouteEdge(), myVehicle.getRoute().end());
-        if (!remainingEdges.empty()) {
-            for (const MSEdge* e : remainingEdges) {
-                oldCost += MSNaviEngine::getEffort(e, &myVehicle, myTime);
+    try {
+        // Safety check: verify vehicle and route are valid
+        if (myVehicle.getRoute().size() == 0) {
+            return;
+        }
+        
+        // Calculate cost of current remaining route
+        double oldCost = 0.0;
+        if (!myOnInit && myVehicle.hasDeparted()) {
+            ConstMSEdgeVector remainingEdges(myVehicle.getCurrentRouteEdge(), myVehicle.getRoute().end());
+            if (!remainingEdges.empty()) {
+                for (const MSEdge* e : remainingEdges) {
+                    if (e != nullptr) {
+                        oldCost += MSNaviEngine::getEffort(e, &myVehicle, myTime);
+                    }
+                }
             }
         }
-    }
-    
-    // Find and select new route
-    double newCost = 0.0;
-    ConstMSRoutePtr selectedRoute = MSNaviEngine::findAndSelectRoute(myVehicle, myTime, newCost, myOnInit);
-    
-    if (selectedRoute == nullptr) {
-        return;
-    }
-    
-    // Check threshold before rerouting (need to get threshold from device)
-    // For now, we'll skip threshold check in parallel mode or get it from vehicle parameters
-    double thresholdFactor = myVehicle.getFloatParam("device.navi.threshold.factor", true, 1.0);
-    double thresholdTime = STEPS2TIME(myVehicle.getTimeParam("device.navi.threshold.constant", true, 0));
-    
-    bool shouldReroute = myOnInit;
-    if (!myOnInit && oldCost > 0) {
-        if (newCost == 0) {
-            shouldReroute = true;
-        } else {
-            shouldReroute = (oldCost / newCost > thresholdFactor) && (oldCost - newCost > thresholdTime);
+        
+        // Find and select new route
+        double newCost = 0.0;
+        ConstMSRoutePtr selectedRoute = MSNaviEngine::findAndSelectRoute(myVehicle, myTime, newCost, myOnInit);
+        
+        if (selectedRoute == nullptr || selectedRoute->size() == 0) {
+            return;
         }
-    }
-    
-    if (shouldReroute) {
-        myVehicle.replaceRoute(selectedRoute, myInfo, myOnInit);
-    }
-    
-    // Cache route for TAZ connectors
-    const MSEdge* source = *myVehicle.getRoute().begin();
-    const MSEdge* dest = myVehicle.getRoute().getLastEdge();
-    if (source->isTazConnector() && dest->isTazConnector()) {
-        FXMutexLock lock(myRouteCacheMutex);
-        auto cacheKey = std::make_pair(source, dest);
-        if (myCachedRoutes.find(cacheKey) == myCachedRoutes.end()) {
-            myCachedRoutes[cacheKey] = selectedRoute;
+        
+        // Check threshold before rerouting (need to get threshold from device)
+        // For now, we'll skip threshold check in parallel mode or get it from vehicle parameters
+        double thresholdFactor = myVehicle.getFloatParam("device.navi.threshold.factor", true, 1.0);
+        double thresholdTime = STEPS2TIME(myVehicle.getTimeParam("device.navi.threshold.constant", true, 0));
+        
+        bool shouldReroute = myOnInit;
+        if (!myOnInit && oldCost > 0) {
+            if (newCost == 0) {
+                shouldReroute = true;
+            } else {
+                shouldReroute = (oldCost / newCost > thresholdFactor) && (oldCost - newCost > thresholdTime);
+            }
         }
+        
+        if (shouldReroute) {
+            myVehicle.replaceRoute(selectedRoute, myInfo, myOnInit);
+        }
+        
+        // Cache route (limit cache size to avoid memory issues)
+        if (myVehicle.getRoute().size() > 0) {
+            const MSEdge* source = *myVehicle.getRoute().begin();
+            const MSEdge* dest = myVehicle.getRoute().getLastEdge();
+            if (source != nullptr && dest != nullptr) {
+                FXMutexLock lock(myRouteCacheMutex);
+                if (myCachedRoutes.size() < 10000) { // Limit cache size
+                    auto cacheKey = std::make_pair(source, dest);
+                    if (myCachedRoutes.find(cacheKey) == myCachedRoutes.end()) {
+                        myCachedRoutes[cacheKey] = selectedRoute;
+                    }
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        WRITE_WARNING("NaviRoutingTask error for vehicle '" + myVehicle.getID() + "': " + e.what());
+    } catch (...) {
+        WRITE_WARNING("NaviRoutingTask unknown error for vehicle '" + myVehicle.getID() + "'");
     }
 }
 #endif

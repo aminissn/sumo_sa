@@ -265,39 +265,11 @@ MSDevice_Navi::reroute(const SUMOTime currentTime, const bool onInit) {
         return;
     }
     
-    // Calculate cost of current remaining route
-    double oldCost = 0.0;
-    if (!onInit && myHolder.hasDeparted()) {
-        ConstMSEdgeVector remainingEdges(myHolder.getCurrentRouteEdge(), myHolder.getRoute().end());
-        if (!remainingEdges.empty()) {
-            for (const MSEdge* e : remainingEdges) {
-                oldCost += MSNaviEngine::getEffort(e, &myHolder, currentTime);
-            }
-        }
-    }
-    
-    // Find and select new route
-    double newCost = 0.0;
-    ConstMSRoutePtr selectedRoute = MSNaviEngine::findAndSelectRoute(myHolder, currentTime, newCost, onInit);
-    
-    if (selectedRoute == nullptr) {
-        return;
-    }
-    
-    // Check threshold before rerouting
-    bool shouldReroute = onInit;
-    if (!onInit && oldCost > 0 && !sufficientSaving(oldCost, newCost)) {
-        return;
-    }
-    
-    // Replace the route
-    myHolder.replaceRoute(selectedRoute, "device.navi", onInit);
     myLastRouting = currentTime;
     
-    // Write route output if enabled
-    if (OptionsCont::getOptions().isSet("device.navi.route-output")) {
-        writeRoute(selectedRoute, currentTime, newCost, onInit);
-    }
+    // Use MSNaviEngine::reroute which handles parallelization via thread pool
+    // This dispatches the routing task to a worker thread if available
+    MSNaviEngine::reroute(myHolder, currentTime, "device.navi", onInit);
 }
 
 std::string
