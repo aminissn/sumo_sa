@@ -27,6 +27,7 @@
 #include <utils/common/WrappingCommand.h>
 #include <microsim/MSVehicle.h>
 #include "MSVehicleDevice.h"
+#include "MSNaviEngine.h"
 
 // ===========================================================================
 // class declarations
@@ -182,7 +183,7 @@ private:
     bool sufficientSaving(double oldCost, double newCost);
 
     /// @brief Write route to output device
-    void writeRoute(const ConstMSRoutePtr& route, const SUMOTime currentTime, const double cost, const bool onInit) const;
+    void writeRoute(const MSNaviEngine::RerouteResult& result, const SUMOTime currentTime, const bool onInit) const;
 
 private:
     /// @brief Invalidated copy constructor.

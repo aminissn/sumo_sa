@@ -164,62 +164,74 @@ MSNaviEngine::initEdgeWeights(SUMOVehicleClass svc) {
 
 SUMOTime
 MSNaviEngine::updateTravelTimes(SUMOTime currentTime) {
-    // Save current interval data to history
-    for (auto& pair : myCurrentIntervalData) {
-        const MSEdge* edge = pair.first;
-        if (edge == nullptr) {
-            continue;
-        }
-        IntervalData& data = pair.second;
-        
-        // Calculate average for this interval
-        double avgTT = data.getAverage();
-        if (avgTT == 0.0) {
-            // No data, use free-flow travel time
-            // Protect against division by zero
-            const double speedLimit = edge->getSpeedLimit();
-            const double length = edge->getLength();
-            if (speedLimit > 0 && length > 0) {
-                avgTT = length / speedLimit;
-            } else {
-                avgTT = 1.0; // Minimum travel time
-            }
-        }
-        
-        // Add to history
-        std::deque<IntervalData>& history = myHistoricalTravelTimes[edge];
-        if ((int)history.size() >= myHistoryIntervals) {
-            history.pop_front();
-        }
-        IntervalData intervalData;
-        intervalData.totalTravelTime = avgTT;
-        intervalData.vehicleCount = 1;
-        history.push_back(intervalData);
-        
-        // Reset current interval
-        data = IntervalData();
-    }
-    
-    myLastUpdate = currentTime;
-    
-    // Write output if requested
-    if (OptionsCont::getOptions().isSet("device.navi.output")) {
-        OutputDevice& dev = OutputDevice::getDeviceByOption("device.navi.output");
-        dev.openTag("interval");
-        dev.writeAttr("begin", time2string(currentTime - UPDATE_INTERVAL));
-        dev.writeAttr("end", time2string(currentTime));
-        for (const auto& pair : myHistoricalTravelTimes) {
+    try {
+        // Save current interval data to history
+        for (auto& pair : myCurrentIntervalData) {
             const MSEdge* edge = pair.first;
-            const std::deque<IntervalData>& history = pair.second;
-            if (!history.empty()) {
-                double avgTT = getAverageTravelTime(edge, myHistoryIntervals);
-                dev.openTag("edge");
-                dev.writeAttr("id", edge->getID());
-                dev.writeAttr("traveltime", avgTT);
-                dev.closeTag();
+            if (edge == nullptr) {
+                continue;
             }
+            IntervalData& data = pair.second;
+            
+            // Calculate average for this interval
+            double avgTT = data.getAverage();
+            if (avgTT == 0.0) {
+                // No data, use free-flow travel time
+                // Protect against division by zero
+                const double speedLimit = edge->getSpeedLimit();
+                const double length = edge->getLength();
+                if (speedLimit > 0 && length > 0) {
+                    avgTT = length / speedLimit;
+                } else {
+                    avgTT = 1.0; // Minimum travel time
+                }
+            }
+            
+            // Add to history - with safety checks
+            auto histIt = myHistoricalTravelTimes.find(edge);
+            if (histIt != myHistoricalTravelTimes.end()) {
+                std::deque<IntervalData>& history = histIt->second;
+                if ((int)history.size() >= myHistoryIntervals) {
+                    history.pop_front();
+                }
+                IntervalData intervalData;
+                intervalData.totalTravelTime = avgTT;
+                intervalData.vehicleCount = 1;
+                history.push_back(intervalData);
+            }
+            
+            // Reset current interval
+            data = IntervalData();
         }
-        dev.closeTag();
+        
+        myLastUpdate = currentTime;
+        
+        // Write output if requested
+        if (OptionsCont::getOptions().isSet("device.navi.output")) {
+            OutputDevice& dev = OutputDevice::getDeviceByOption("device.navi.output");
+            dev.openTag("interval");
+            dev.writeAttr("begin", time2string(currentTime - UPDATE_INTERVAL));
+            dev.writeAttr("end", time2string(currentTime));
+            for (const auto& pair : myHistoricalTravelTimes) {
+                const MSEdge* edge = pair.first;
+                if (edge == nullptr) {
+                    continue;
+                }
+                const std::deque<IntervalData>& history = pair.second;
+                if (!history.empty()) {
+                    double avgTT = getAverageTravelTime(edge, myHistoryIntervals);
+                    dev.openTag("edge");
+                    dev.writeAttr("id", edge->getID());
+                    dev.writeAttr("traveltime", avgTT);
+                    dev.closeTag();
+                }
+            }
+            dev.closeTag();
+        }
+    } catch (const std::exception& e) {
+        WRITE_WARNING("updateTravelTimes error: " + std::string(e.what()));
+    } catch (...) {
+        WRITE_WARNING("updateTravelTimes unknown error");
     }
     
     return UPDATE_INTERVAL;
@@ -277,12 +289,18 @@ MSNaviEngine::getAverageTravelTime(const MSEdge* edge, int intervals) {
 
 ConstMSRoutePtr
 MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTime,
-                                  double& newCost, const bool onInit) {
-    // Safety check
-    if (vehicle.getRoute().size() == 0) {
+                                  double& newCost, const bool onInit,
+                                  std::vector<AlternativeInfo>* allAlternatives) {
+    try {
+        // Safety check
+        if (vehicle.getRoute().size() == 0) {
+            return nullptr;
+        }
+    } catch (...) {
         return nullptr;
     }
     
+    try {
     if (myRouterProvider == nullptr) {
         // Initialize router similar to MSRoutingEngine
         OptionsCont& oc = OptionsCont::getOptions();
@@ -338,9 +356,17 @@ MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTim
 #endif
     }
     
-    // Get source and destination edges
-    const MSEdge* source = *vehicle.getRoute().begin();
-    const MSEdge* dest = vehicle.getRoute().getLastEdge();
+    // Get source and destination edges with safety checks
+    const MSEdge* source = nullptr;
+    const MSEdge* dest = nullptr;
+    try {
+        if (vehicle.getRoute().size() > 0) {
+            source = *vehicle.getRoute().begin();
+            dest = vehicle.getRoute().getLastEdge();
+        }
+    } catch (...) {
+        return nullptr;
+    }
     
     if (source == nullptr || dest == nullptr || source == dest) {
         return nullptr;
@@ -352,14 +378,25 @@ MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTim
         FXMutexLock lock(myRouteCacheMutex);
         auto cacheKey = std::make_pair(source, dest);
         auto cacheIt = myCachedRoutes.find(cacheKey);
-        if (cacheIt != myCachedRoutes.end() && cacheIt->second != nullptr && cacheIt->second->size() > 0) {
-            // Calculate cost for cached route
-            for (const MSEdge* e : cacheIt->second->getEdges()) {
-                if (e != nullptr) {
-                    newCost += getEffort(e, &vehicle, currentTime);
+        if (cacheIt != myCachedRoutes.end() && cacheIt->second != nullptr) {
+            try {
+                if (cacheIt->second->size() > 0) {
+                    // Calculate cost for cached route
+                    const ConstMSEdgeVector& edges = cacheIt->second->getEdges();
+                    for (size_t i = 0; i < edges.size(); ++i) {
+                        if (edges[i] != nullptr) {
+                            newCost += getEffort(edges[i], &vehicle, currentTime);
+                        }
+                    }
+                    // Populate allAlternatives if requested (single cached route with probability 1.0)
+                    if (allAlternatives != nullptr) {
+                        allAlternatives->emplace_back(cacheIt->second, newCost, 1.0, true);
+                    }
+                    return cacheIt->second;
                 }
+            } catch (...) {
+                // Cache access failed, proceed to compute route
             }
-            return cacheIt->second;
         }
     }
 #endif
@@ -371,19 +408,23 @@ MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTim
         return nullptr;
     }
     
-    // Select route using logit model
+    // Select route using logit model (this calculates probabilities)
     ConstMSRoutePtr selectedRoute = selectRouteByLogit(alternatives, vehicle, currentTime);
     
     if (selectedRoute == nullptr) {
         return nullptr;
     }
     
-    // Find the cost of the selected route
+    // Find the cost of the selected route and populate alternatives output
     newCost = 0.0;
     for (const auto& alt : alternatives) {
-        if (alt.route == selectedRoute) {
+        bool isSelected = (alt.route == selectedRoute);
+        if (isSelected) {
             newCost = alt.cost;
-            break;
+        }
+        // Populate allAlternatives if requested
+        if (allAlternatives != nullptr) {
+            allAlternatives->emplace_back(alt.route, alt.cost, alt.probability, isSelected);
         }
     }
     
@@ -401,11 +442,20 @@ MSNaviEngine::findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTim
 #endif
     
     return selectedRoute;
+    } catch (const std::exception& e) {
+        WRITE_WARNING("findAndSelectRoute error: " + std::string(e.what()));
+        return nullptr;
+    } catch (...) {
+        WRITE_WARNING("findAndSelectRoute unknown error");
+        return nullptr;
+    }
 }
 
-void
+MSNaviEngine::RerouteResult
 MSNaviEngine::reroute(SUMOVehicle& vehicle, const SUMOTime currentTime, const std::string& info,
                      const bool onInit) {
+    RerouteResult result;
+    
     try {
         initEdgeWeights(vehicle.getVClass());
         
@@ -416,29 +466,46 @@ MSNaviEngine::reroute(SUMOVehicle& vehicle, const SUMOTime currentTime, const st
         
         // Safety check
         if (vehicle.getRoute().size() == 0) {
-            return;
+            return result;
         }
         
         // Sequential routing (fallback)
         // Calculate cost of current remaining route
         double oldCost = 0.0;
         if (!onInit && vehicle.hasDeparted()) {
-            ConstMSEdgeVector remainingEdges(vehicle.getCurrentRouteEdge(), vehicle.getRoute().end());
-            if (!remainingEdges.empty()) {
-                for (const MSEdge* e : remainingEdges) {
-                    if (e != nullptr) {
-                        oldCost += getEffort(e, &vehicle, currentTime);
+            try {
+                // Safety check: ensure current route edge iterator is valid
+                auto currentEdgeIt = vehicle.getCurrentRouteEdge();
+                auto routeEnd = vehicle.getRoute().end();
+                auto routeBegin = vehicle.getRoute().begin();
+                
+                // Validate iterator range before constructing vector
+                if (currentEdgeIt >= routeBegin && currentEdgeIt < routeEnd) {
+                    ConstMSEdgeVector remainingEdges(currentEdgeIt, routeEnd);
+                    for (size_t i = 0; i < remainingEdges.size(); ++i) {
+                        const MSEdge* e = remainingEdges[i];
+                        if (e != nullptr) {
+                            oldCost += getEffort(e, &vehicle, currentTime);
+                        }
                     }
                 }
+            } catch (...) {
+                // If we can't compute old cost, just use 0
+                oldCost = 0.0;
             }
         }
         
-        // Find and select new route
+        // Find and select new route, collecting all alternatives
         double newCost = 0.0;
-        ConstMSRoutePtr selectedRoute = findAndSelectRoute(vehicle, currentTime, newCost, onInit);
+        std::vector<AlternativeInfo> alternatives;
+        ConstMSRoutePtr selectedRoute = findAndSelectRoute(vehicle, currentTime, newCost, onInit, &alternatives);
+        
+        // Store old cost and alternatives in result
+        result.oldCost = oldCost;
+        result.alternatives = alternatives;
         
         if (selectedRoute == nullptr || selectedRoute->size() == 0) {
-            return;
+            return result;
         }
         
         // Check threshold before rerouting
@@ -456,6 +523,9 @@ MSNaviEngine::reroute(SUMOVehicle& vehicle, const SUMOTime currentTime, const st
         
         if (shouldReroute) {
             vehicle.replaceRoute(selectedRoute, info, onInit);
+            result.success = true;
+            result.route = selectedRoute;
+            result.cost = newCost;
         }
     } catch (const ProcessError& e) {
         WRITE_WARNING("Navi routing error for vehicle '" + vehicle.getID() + "': " + e.what());
@@ -464,6 +534,8 @@ MSNaviEngine::reroute(SUMOVehicle& vehicle, const SUMOTime currentTime, const st
     } catch (...) {
         WRITE_WARNING("Navi routing unknown error for vehicle '" + vehicle.getID() + "'");
     }
+    
+    return result;
 }
 
 std::vector<MSNaviEngine::RouteAlternative>
@@ -625,26 +697,34 @@ MSNaviEngine::selectRouteByLogit(std::vector<RouteAlternative>& alternatives,
         return nullptr;
     }
     
-    if (alternatives.size() == 1) {
-        return alternatives[0].route;
-    }
-    
-    // Calculate logit probabilities
-    calculateLogitProbabilities(alternatives, myLogitTheta);
-    
-    // Use vehicle's RNG for probabilistic selection
-    double random = RandHelper::rand(vehicle.getRNG());
-    double cumulativeProb = 0.0;
-    
-    for (auto& alt : alternatives) {
-        cumulativeProb += alt.probability;
-        if (random <= cumulativeProb) {
-            return alt.route;
+    try {
+        if (alternatives.size() == 1) {
+            return alternatives[0].route;
         }
+        
+        // Calculate logit probabilities
+        calculateLogitProbabilities(alternatives, myLogitTheta);
+        
+        // Use vehicle's RNG for probabilistic selection
+        double random = RandHelper::rand(vehicle.getRNG());
+        double cumulativeProb = 0.0;
+        
+        for (size_t i = 0; i < alternatives.size(); ++i) {
+            cumulativeProb += alternatives[i].probability;
+            if (random <= cumulativeProb) {
+                return alternatives[i].route;
+            }
+        }
+        
+        // Fallback to first route
+        return alternatives[0].route;
+    } catch (...) {
+        // Return first route on any error
+        if (!alternatives.empty()) {
+            return alternatives[0].route;
+        }
+        return nullptr;
     }
-    
-    // Fallback to first route
-    return alternatives[0].route;
 }
 
 void
@@ -653,28 +733,44 @@ MSNaviEngine::calculateLogitProbabilities(std::vector<RouteAlternative>& alterna
         return;
     }
     
-    // Find minimum cost
-    double minCost = std::numeric_limits<double>::max();
-    for (const auto& alt : alternatives) {
-        if (alt.cost < minCost) {
-            minCost = alt.cost;
+    try {
+        // Find minimum cost
+        double minCost = std::numeric_limits<double>::max();
+        for (size_t i = 0; i < alternatives.size(); ++i) {
+            if (alternatives[i].cost < minCost) {
+                minCost = alternatives[i].cost;
+            }
         }
-    }
-    
-    // Calculate exponential utilities
-    std::vector<double> expUtilities;
-    double sumExpUtilities = 0.0;
-    
-    for (const auto& alt : alternatives) {
-        double utility = -theta * (alt.cost - minCost); // Negative because lower cost is better
-        double expUtil = exp(utility);
-        expUtilities.push_back(expUtil);
-        sumExpUtilities += expUtil;
-    }
-    
-    // Calculate probabilities
-    for (size_t i = 0; i < alternatives.size(); ++i) {
-        alternatives[i].probability = expUtilities[i] / sumExpUtilities;
+        
+        // Calculate exponential utilities and sum in one pass
+        double sumExpUtilities = 0.0;
+        for (size_t i = 0; i < alternatives.size(); ++i) {
+            double utility = -theta * (alternatives[i].cost - minCost); // Negative because lower cost is better
+            // Clamp utility to prevent overflow in exp()
+            utility = MAX2(-700.0, MIN2(700.0, utility));
+            double expUtil = exp(utility);
+            alternatives[i].probability = expUtil;  // Temporarily store exp utility
+            sumExpUtilities += expUtil;
+        }
+        
+        // Normalize to get probabilities
+        if (sumExpUtilities > 0) {
+            for (size_t i = 0; i < alternatives.size(); ++i) {
+                alternatives[i].probability /= sumExpUtilities;
+            }
+        } else {
+            // Fallback: equal probabilities
+            double equalProb = 1.0 / alternatives.size();
+            for (size_t i = 0; i < alternatives.size(); ++i) {
+                alternatives[i].probability = equalProb;
+            }
+        }
+    } catch (...) {
+        // Fallback: equal probabilities
+        double equalProb = 1.0 / alternatives.size();
+        for (size_t i = 0; i < alternatives.size(); ++i) {
+            alternatives[i].probability = equalProb;
+        }
     }
 }
 
@@ -733,20 +829,36 @@ void
 MSNaviEngine::NaviRoutingTask::run(MFXWorkerThread* context) {
     try {
         // Safety check: verify vehicle and route are valid
-        if (myVehicle.getRoute().size() == 0) {
+        try {
+            if (myVehicle.getRoute().size() == 0) {
+                return;
+            }
+        } catch (...) {
             return;
         }
         
         // Calculate cost of current remaining route
         double oldCost = 0.0;
         if (!myOnInit && myVehicle.hasDeparted()) {
-            ConstMSEdgeVector remainingEdges(myVehicle.getCurrentRouteEdge(), myVehicle.getRoute().end());
-            if (!remainingEdges.empty()) {
-                for (const MSEdge* e : remainingEdges) {
-                    if (e != nullptr) {
-                        oldCost += MSNaviEngine::getEffort(e, &myVehicle, myTime);
+            try {
+                // Safety check: ensure current route edge iterator is valid
+                auto currentEdgeIt = myVehicle.getCurrentRouteEdge();
+                auto routeEnd = myVehicle.getRoute().end();
+                auto routeBegin = myVehicle.getRoute().begin();
+                
+                // Validate iterator range before constructing vector
+                if (currentEdgeIt >= routeBegin && currentEdgeIt < routeEnd) {
+                    ConstMSEdgeVector remainingEdges(currentEdgeIt, routeEnd);
+                    for (size_t i = 0; i < remainingEdges.size(); ++i) {
+                        const MSEdge* e = remainingEdges[i];
+                        if (e != nullptr) {
+                            oldCost += MSNaviEngine::getEffort(e, &myVehicle, myTime);
+                        }
                     }
                 }
+            } catch (...) {
+                // If we can't compute old cost, just use 0
+                oldCost = 0.0;
             }
         }
         
@@ -754,7 +866,15 @@ MSNaviEngine::NaviRoutingTask::run(MFXWorkerThread* context) {
         double newCost = 0.0;
         ConstMSRoutePtr selectedRoute = MSNaviEngine::findAndSelectRoute(myVehicle, myTime, newCost, myOnInit);
         
-        if (selectedRoute == nullptr || selectedRoute->size() == 0) {
+        if (selectedRoute == nullptr) {
+            return;
+        }
+        
+        try {
+            if (selectedRoute->size() == 0) {
+                return;
+            }
+        } catch (...) {
             return;
         }
         
@@ -777,18 +897,22 @@ MSNaviEngine::NaviRoutingTask::run(MFXWorkerThread* context) {
         }
         
         // Cache route (limit cache size to avoid memory issues)
-        if (myVehicle.getRoute().size() > 0) {
-            const MSEdge* source = *myVehicle.getRoute().begin();
-            const MSEdge* dest = myVehicle.getRoute().getLastEdge();
-            if (source != nullptr && dest != nullptr) {
-                FXMutexLock lock(myRouteCacheMutex);
-                if (myCachedRoutes.size() < 10000) { // Limit cache size
-                    auto cacheKey = std::make_pair(source, dest);
-                    if (myCachedRoutes.find(cacheKey) == myCachedRoutes.end()) {
-                        myCachedRoutes[cacheKey] = selectedRoute;
+        try {
+            if (myVehicle.getRoute().size() > 0) {
+                const MSEdge* source = *myVehicle.getRoute().begin();
+                const MSEdge* dest = myVehicle.getRoute().getLastEdge();
+                if (source != nullptr && dest != nullptr) {
+                    FXMutexLock lock(myRouteCacheMutex);
+                    if (myCachedRoutes.size() < 10000) { // Limit cache size
+                        auto cacheKey = std::make_pair(source, dest);
+                        if (myCachedRoutes.find(cacheKey) == myCachedRoutes.end()) {
+                            myCachedRoutes[cacheKey] = selectedRoute;
+                        }
                     }
                 }
             }
+        } catch (...) {
+            // Cache error is not critical, ignore
         }
     } catch (const std::exception& e) {
         WRITE_WARNING("NaviRoutingTask error for vehicle '" + myVehicle.getID() + "': " + e.what());

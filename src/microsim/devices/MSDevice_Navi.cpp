@@ -164,29 +164,38 @@ MSDevice_Navi::~MSDevice_Navi() {
 
 bool
 MSDevice_Navi::notifyEnter(SUMOTrafficObject& /*veh*/, MSMoveReminder::Notification reason, const MSLane* enteredLane) {
-    if (reason == MSMoveReminder::NOTIFICATION_DEPARTED) {
-        // build repetition trigger if routing shall be done more often
-        rebuildRerouteCommand(SIMSTEP + myPeriod);
-    }
-    if (MSGlobals::gWeightsSeparateTurns > 0) {
-        if (reason == MSMoveReminder::NOTIFICATION_JUNCTION) {
-            const SUMOTime t = SIMSTEP;
-            if (myLastLaneEntryTime >= 0 && enteredLane->isInternal()) {
-                // record travel time on the previous edge
-                MSNaviEngine::addEdgeTravelTime(enteredLane->getEdge(), t - myLastLaneEntryTime);
-            }
-            myLastLaneEntryTime = t;
+    try {
+        if (reason == MSMoveReminder::NOTIFICATION_DEPARTED) {
+            // build repetition trigger if routing shall be done more often
+            rebuildRerouteCommand(SIMSTEP + myPeriod);
         }
-        return true;
-    } else {
+        if (MSGlobals::gWeightsSeparateTurns > 0) {
+            if (reason == MSMoveReminder::NOTIFICATION_JUNCTION) {
+                const SUMOTime t = SIMSTEP;
+                if (myLastLaneEntryTime >= 0 && enteredLane != nullptr && enteredLane->isInternal()) {
+                    // record travel time on the previous edge
+                    MSNaviEngine::addEdgeTravelTime(enteredLane->getEdge(), t - myLastLaneEntryTime);
+                }
+                myLastLaneEntryTime = t;
+            }
+            return true;
+        } else {
+            return false;
+        }
+    } catch (...) {
+        // Ignore errors in notifyEnter to prevent simulation crash
         return false;
     }
 }
 
 void
 MSDevice_Navi::notifyStopEnded() {
-    if (myRerouteAfterStop) {
-        reroute(SIMSTEP);
+    try {
+        if (myRerouteAfterStop) {
+            reroute(SIMSTEP);
+            myRerouteAfterStop = false;
+        }
+    } catch (...) {
         myRerouteAfterStop = false;
     }
 }
@@ -207,17 +216,40 @@ MSDevice_Navi::rebuildRerouteCommand(SUMOTime start) {
 
 SUMOTime
 MSDevice_Navi::preInsertionReroute(const SUMOTime currentTime) {
-    if (mySkipRouting == currentTime) {
-        return DELTA_T;
-    }
-    if (myPreInsertionPeriod == 0) {
-        // the event will deschedule and destroy itself so it does not need to be stored
-        myRerouteCommand = nullptr;
-    }
-    const MSEdge* source = *myHolder.getRoute().begin();
-    const MSEdge* dest = myHolder.getRoute().getLastEdge();
-    if (source->isTazConnector() && dest->isTazConnector()) {
-        // For TAZ connectors, use standard routing
+    try {
+        if (mySkipRouting == currentTime) {
+            return DELTA_T;
+        }
+        if (myPreInsertionPeriod == 0) {
+            // the event will deschedule and destroy itself so it does not need to be stored
+            myRerouteCommand = nullptr;
+        }
+        
+        // Safety check: ensure route is valid before accessing
+        if (myHolder.getRoute().size() == 0) {
+            return myPreInsertionPeriod;
+        }
+        
+        const MSEdge* source = *myHolder.getRoute().begin();
+        const MSEdge* dest = myHolder.getRoute().getLastEdge();
+        
+        if (source == nullptr || dest == nullptr) {
+            return myPreInsertionPeriod;
+        }
+        
+        if (source->isTazConnector() && dest->isTazConnector()) {
+            // For TAZ connectors, use standard routing
+            try {
+                std::string msg;
+                if (myHolder.hasValidRouteStart(msg)) {
+                    reroute(currentTime, true);
+                }
+            } catch (ProcessError&) {
+                myRerouteCommand = nullptr;
+                throw;
+            }
+            return myPreInsertionPeriod;
+        }
         try {
             std::string msg;
             if (myHolder.hasValidRouteStart(msg)) {
@@ -227,49 +259,76 @@ MSDevice_Navi::preInsertionReroute(const SUMOTime currentTime) {
             myRerouteCommand = nullptr;
             throw;
         }
+        // avoid repeated pre-insertion rerouting when the departure edge is fix
+        if (myPreInsertionPeriod > 0 && !source->isTazConnector() && 
+            myHolder.getParameter().departLaneProcedure != DepartLaneDefinition::BEST_FREE) {
+            myRerouteCommand = nullptr;
+            return 0;
+        }
+        return myPreInsertionPeriod;
+    } catch (const std::out_of_range& e) {
+        WRITE_WARNING("device.navi preInsertionReroute out_of_range for '" + myHolder.getID() + "': " + e.what());
+        return myPreInsertionPeriod;
+    } catch (const std::exception& e) {
+        WRITE_WARNING("device.navi preInsertionReroute error for '" + myHolder.getID() + "': " + e.what());
+        return myPreInsertionPeriod;
+    } catch (...) {
+        WRITE_WARNING("device.navi preInsertionReroute unknown error for '" + myHolder.getID() + "'");
         return myPreInsertionPeriod;
     }
-    try {
-        std::string msg;
-        if (myHolder.hasValidRouteStart(msg)) {
-            reroute(currentTime, true);
-        }
-    } catch (ProcessError&) {
-        myRerouteCommand = nullptr;
-        throw;
-    }
-    // avoid repeated pre-insertion rerouting when the departure edge is fix
-    if (myPreInsertionPeriod > 0 && !source->isTazConnector() && 
-        myHolder.getParameter().departLaneProcedure != DepartLaneDefinition::BEST_FREE) {
-        myRerouteCommand = nullptr;
-        return 0;
-    }
-    return myPreInsertionPeriod;
 }
 
 SUMOTime
 MSDevice_Navi::wrappedRerouteCommandExecute(SUMOTime currentTime) {
-    if (myHolder.isStopped()) {
-        myRerouteAfterStop = true;
-    } else {
-        reroute(currentTime);
+    try {
+        if (myHolder.isStopped()) {
+            myRerouteAfterStop = true;
+        } else {
+            reroute(currentTime);
+        }
+    } catch (const std::exception& e) {
+        WRITE_WARNING("device.navi wrappedRerouteCommandExecute error for '" + myHolder.getID() + "': " + e.what());
+    } catch (...) {
+        WRITE_WARNING("device.navi wrappedRerouteCommandExecute unknown error for '" + myHolder.getID() + "'");
     }
     return myPeriod;
 }
 
 void
 MSDevice_Navi::reroute(const SUMOTime currentTime, const bool onInit) {
-    MSNaviEngine::initEdgeWeights(myHolder.getVClass());
-    // check whether we should reroute
-    if (!onInit && (myLastRouting >= MSNaviEngine::getLastUpdate() || myLastRouting == currentTime)) {
+    try {
+        MSNaviEngine::initEdgeWeights(myHolder.getVClass());
+    } catch (const std::exception& e) {
+        WRITE_WARNING("device.navi initEdgeWeights error for '" + myHolder.getID() + "': " + e.what());
+        return;
+    } catch (...) {
+        WRITE_WARNING("device.navi initEdgeWeights unknown error for '" + myHolder.getID() + "'");
         return;
     }
     
-    myLastRouting = currentTime;
-    
-    // Use MSNaviEngine::reroute which handles parallelization via thread pool
-    // This dispatches the routing task to a worker thread if available
-    MSNaviEngine::reroute(myHolder, currentTime, "device.navi", onInit);
+    try {
+        // check whether we should reroute
+        if (!onInit && (myLastRouting >= MSNaviEngine::getLastUpdate() || myLastRouting == currentTime)) {
+            return;
+        }
+        
+        myLastRouting = currentTime;
+        
+        // Use MSNaviEngine::reroute which handles parallelization via thread pool
+        // This dispatches the routing task to a worker thread if available
+        MSNaviEngine::RerouteResult result = MSNaviEngine::reroute(myHolder, currentTime, "device.navi", onInit);
+        
+        // Write route output (includes all alternatives even if no rerouting happened)
+        if (!result.alternatives.empty()) {
+            writeRoute(result, currentTime, onInit);
+        }
+    } catch (const std::out_of_range& e) {
+        WRITE_WARNING("device.navi reroute out_of_range for '" + myHolder.getID() + "': " + e.what());
+    } catch (const std::exception& e) {
+        WRITE_WARNING("device.navi reroute error for '" + myHolder.getID() + "': " + e.what());
+    } catch (...) {
+        WRITE_WARNING("device.navi reroute unknown error for '" + myHolder.getID() + "'");
+    }
 }
 
 std::string
@@ -347,51 +406,103 @@ MSDevice_Navi::loadState(const SUMOSAXAttributes& attrs) {
 }
 
 void
-MSDevice_Navi::writeRoute(const ConstMSRoutePtr& route, const SUMOTime currentTime, const double cost, const bool onInit) const {
-    if (!OptionsCont::getOptions().isSet("device.navi.route-output")) {
-        return;
-    }
-    
-    OutputDevice& routeOut = OutputDevice::getDeviceByOption("device.navi.route-output");
-    const OptionsCont& oc = OptionsCont::getOptions();
-    const bool writeExitTimes = oc.getBool("device.navi.route-output.exit-times");
-    const bool writeCosts = oc.getBool("device.navi.route-output.costs");
-    
-    routeOut.openTag(SUMO_TAG_ROUTE);
-    routeOut.writeAttr(SUMO_ATTR_ID, myHolder.getID());
-    routeOut.writeAttr(SUMO_ATTR_VEHICLE, myHolder.getID());
-    
-    if (writeCosts) {
-        routeOut.writeAttr(SUMO_ATTR_COST, cost);
-    }
-    
-    // Write reason and time
-    routeOut.writeAttr("reason", onInit ? "init" : "reroute");
-    routeOut.writeAttr(SUMO_ATTR_REPLACED_AT_TIME, time2string(currentTime));
-    
-    // Write edges
-    OutputDevice_String edgesD;
-    route->writeEdgeIDs(edgesD, 0, -1, false, myHolder.getVClass());
-    std::string edgesS = edgesD.getString();
-    if (!edgesS.empty()) {
-        edgesS.pop_back(); // remove last ' '
-    }
-    routeOut.writeAttr(SUMO_ATTR_EDGES, edgesS);
-    
-    // Write exit times if requested
-    if (writeExitTimes) {
-        std::vector<std::string> exitTimes;
-        double time = STEPS2TIME(currentTime);
-        for (const MSEdge* e : route->getEdges()) {
-            if (!e->isInternal() && !e->isTazConnector()) {
-                time += MSNaviEngine::getEffort(e, &myHolder, TIME2STEPS(time));
-                exitTimes.push_back(time2string(TIME2STEPS(time)));
-            }
+MSDevice_Navi::writeRoute(const MSNaviEngine::RerouteResult& result, const SUMOTime currentTime, const bool onInit) const {
+    try {
+        if (!OptionsCont::getOptions().isSet("device.navi.route-output")) {
+            return;
         }
-        routeOut.writeAttr(SUMO_ATTR_EXITTIMES, exitTimes);
+        
+        OutputDevice& routeOut = OutputDevice::getDeviceByOption("device.navi.route-output");
+        const OptionsCont& oc = OptionsCont::getOptions();
+        const bool writeExitTimes = oc.getBool("device.navi.route-output.exit-times");
+        const bool writeCosts = oc.getBool("device.navi.route-output.costs");
+        
+        // Open routeChoice element to group all alternatives for this vehicle at this time
+        routeOut.openTag("routeChoice");
+        routeOut.writeAttr("vehicle", myHolder.getID());
+        routeOut.writeAttr("time", time2string(currentTime));
+        routeOut.writeAttr("reason", onInit ? "device.navi:init" : "device.navi:reroute");
+        routeOut.writeAttr("rerouted", result.success ? "true" : "false");
+        
+        // Write the edge where vehicle was when route was computed
+        if (myHolder.hasDeparted() && myHolder.getLane() != nullptr) {
+            routeOut.writeAttr("replacedOnEdge", myHolder.getLane()->getEdge().getID());
+        }
+        
+        // Write old route cost if available
+        if (writeCosts && result.oldCost > 0) {
+            routeOut.writeAttr("oldCost", result.oldCost);
+        }
+        
+        // Write each alternative route
+        int altIndex = 0;
+        for (size_t i = 0; i < result.alternatives.size(); ++i) {
+            const auto& alt = result.alternatives[i];
+            if (alt.route == nullptr) {
+                continue;
+            }
+            
+            // Safety check on route size
+            try {
+                if (alt.route->size() == 0) {
+                    continue;
+                }
+            } catch (...) {
+                continue;
+            }
+            
+            routeOut.openTag(SUMO_TAG_ROUTE);
+            routeOut.writeAttr(SUMO_ATTR_ID, myHolder.getID() + "_" + time2string(currentTime) + "_alt" + toString(altIndex));
+            
+            // Write cost and probability
+            if (writeCosts) {
+                routeOut.writeAttr(SUMO_ATTR_COST, alt.cost);
+            }
+            routeOut.writeAttr(SUMO_ATTR_PROB, alt.probability);
+            routeOut.writeAttr("selected", alt.selected ? "true" : "false");
+            
+            // Write edges with safety check
+            try {
+                OutputDevice_String edgesD;
+                alt.route->writeEdgeIDs(edgesD, 0, -1, false, myHolder.getVClass());
+                std::string edgesS = edgesD.getString();
+                if (!edgesS.empty()) {
+                    edgesS.pop_back(); // remove last ' '
+                }
+                routeOut.writeAttr(SUMO_ATTR_EDGES, edgesS);
+            } catch (...) {
+                routeOut.writeAttr(SUMO_ATTR_EDGES, "");
+            }
+            
+            // Write exit times if requested (only for selected route to reduce output size)
+            if (writeExitTimes && alt.selected) {
+                try {
+                    std::vector<std::string> exitTimes;
+                    double time = STEPS2TIME(currentTime);
+                    const ConstMSEdgeVector& edges = alt.route->getEdges();
+                    for (size_t j = 0; j < edges.size(); ++j) {
+                        const MSEdge* e = edges[j];
+                        if (e != nullptr && !e->isInternal() && !e->isTazConnector()) {
+                            time += MSNaviEngine::getEffort(e, &myHolder, TIME2STEPS(time));
+                            exitTimes.push_back(time2string(TIME2STEPS(time)));
+                        }
+                    }
+                    routeOut.writeAttr(SUMO_ATTR_EXITTIMES, exitTimes);
+                } catch (...) {
+                    // Skip exit times on error
+                }
+            }
+            
+            routeOut.closeTag();
+            altIndex++;
+        }
+        
+        routeOut.closeTag();  // close routeChoice
+    } catch (const std::exception& e) {
+        WRITE_WARNING("device.navi writeRoute error for '" + myHolder.getID() + "': " + e.what());
+    } catch (...) {
+        WRITE_WARNING("device.navi writeRoute unknown error for '" + myHolder.getID() + "'");
     }
-    
-    routeOut.closeTag();
 }
 
 /****************************************************************************/

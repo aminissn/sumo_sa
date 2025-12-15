@@ -55,6 +55,29 @@ class MSDevice_Navi;
  */
 class MSNaviEngine {
 public:
+    /// @brief Struct to hold information about a route alternative
+    struct AlternativeInfo {
+        ConstMSRoutePtr route;  ///< The route
+        double cost;            ///< The cost of this route
+        double probability;     ///< The logit probability
+        bool selected;          ///< Whether this route was selected
+        
+        AlternativeInfo() : route(nullptr), cost(0.0), probability(0.0), selected(false) {}
+        AlternativeInfo(ConstMSRoutePtr r, double c, double p, bool s) 
+            : route(r), cost(c), probability(p), selected(s) {}
+    };
+    
+    /// @brief Struct to hold reroute result information
+    struct RerouteResult {
+        bool success;                           ///< Whether rerouting was performed
+        ConstMSRoutePtr route;                  ///< The new route (if success)
+        double cost;                            ///< The cost of the new route
+        double oldCost;                         ///< The cost of the old route
+        std::vector<AlternativeInfo> alternatives;  ///< All alternatives considered
+        
+        RerouteResult() : success(false), route(nullptr), cost(0.0), oldCost(0.0) {}
+    };
+
     /// @brief Initialize the navi engine
     static void init();
 
@@ -70,12 +93,15 @@ public:
     /// @brief Find k-shortest paths and select one using logit model
     /// @return The selected route (nullptr if no route found)
     /// @param[out] newCost The cost of the selected route (if route was found)
+    /// @param[out] allAlternatives Optional pointer to vector to store all alternatives with probabilities
     static ConstMSRoutePtr findAndSelectRoute(SUMOVehicle& vehicle, const SUMOTime currentTime, 
-                                    double& newCost, const bool onInit = false);
-
+                                    double& newCost, const bool onInit = false,
+                                    std::vector<AlternativeInfo>* allAlternatives = nullptr);
+    
     /// @brief Reroute a vehicle (with parallelization support)
-    static void reroute(SUMOVehicle& vehicle, const SUMOTime currentTime, const std::string& info,
-                        const bool onInit = false);
+    /// @return RerouteResult containing success status, route, and cost
+    static RerouteResult reroute(SUMOVehicle& vehicle, const SUMOTime currentTime, const std::string& info,
+                                 const bool onInit = false);
 
     /// @brief Record actual travel time for an edge
     static void addEdgeTravelTime(const MSEdge& edge, const SUMOTime travelTime);
