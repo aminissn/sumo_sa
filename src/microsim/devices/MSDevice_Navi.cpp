@@ -106,6 +106,21 @@ MSDevice_Navi::checkOptions(OptionsCont& oc) {
         ok = false;
     }
 #endif
+    // Check if device.navi is enabled and multi-threading is requested
+    // device.navi is NOT thread-safe due to shared k-shortest path routers
+    const bool naviEnabled = oc.getFloat("device.navi.probability") > 0 || 
+                             oc.isSet("device.navi.explicit") ||
+                             oc.isSet("device.navi.deterministic");
+    if (naviEnabled) {
+        int numThreads = oc.getInt("threads");
+        if (numThreads == 0) {
+            numThreads = oc.getInt("device.rerouting.threads");
+        }
+        if (numThreads > 1) {
+            WRITE_WARNING(TL("device.navi is not thread-safe. Using --threads 1 is recommended to avoid crashes."));
+            WRITE_WARNING(TL("If you experience 'Error: vector' crashes, run with --threads 1"));
+        }
+    }
     if (oc.isSet("device.navi.route-output")) {
         OutputDevice::createDeviceByOption("device.navi.route-output", "routes", "routes_file.xsd");
     }
@@ -169,7 +184,9 @@ MSDevice_Navi::notifyEnter(SUMOTrafficObject& /*veh*/, MSMoveReminder::Notificat
             // build repetition trigger if routing shall be done more often
             rebuildRerouteCommand(SIMSTEP + myPeriod);
         }
-        if (MSGlobals::gWeightsSeparateTurns > 0) {
+        // In mesoscopic simulation (MESO), enteredLane is always nullptr
+        // so we skip the lane-based travel time tracking
+        if (!MSGlobals::gUseMesoSim && MSGlobals::gWeightsSeparateTurns > 0) {
             if (reason == MSMoveReminder::NOTIFICATION_JUNCTION) {
                 const SUMOTime t = SIMSTEP;
                 if (myLastLaneEntryTime >= 0 && enteredLane != nullptr && enteredLane->isInternal()) {
@@ -297,6 +314,11 @@ MSDevice_Navi::wrappedRerouteCommandExecute(SUMOTime currentTime) {
 void
 MSDevice_Navi::reroute(const SUMOTime currentTime, const bool onInit) {
     try {
+        // Safety check: verify holder is in valid state
+        if (!myHolder.isOnRoad() && !onInit) {
+            return;  // Vehicle not on road, skip rerouting
+        }
+        
         MSNaviEngine::initEdgeWeights(myHolder.getVClass());
     } catch (const std::exception& e) {
         WRITE_WARNING("device.navi initEdgeWeights error for '" + myHolder.getID() + "': " + e.what());
@@ -313,6 +335,15 @@ MSDevice_Navi::reroute(const SUMOTime currentTime, const bool onInit) {
         }
         
         myLastRouting = currentTime;
+        
+        // Safety check: verify route is valid
+        try {
+            if (myHolder.getRoute().size() == 0) {
+                return;
+            }
+        } catch (...) {
+            return;
+        }
         
         // Use MSNaviEngine::reroute which handles parallelization via thread pool
         // This dispatches the routing task to a worker thread if available
@@ -425,8 +456,16 @@ MSDevice_Navi::writeRoute(const MSNaviEngine::RerouteResult& result, const SUMOT
         routeOut.writeAttr("rerouted", result.success ? "true" : "false");
         
         // Write the edge where vehicle was when route was computed
-        if (myHolder.hasDeparted() && myHolder.getLane() != nullptr) {
-            routeOut.writeAttr("replacedOnEdge", myHolder.getLane()->getEdge().getID());
+        // In MESO, getLane() always returns nullptr, so we use getEdge() instead
+        if (myHolder.hasDeparted()) {
+            try {
+                const MSEdge* currentEdge = myHolder.getEdge();
+                if (currentEdge != nullptr) {
+                    routeOut.writeAttr("replacedOnEdge", currentEdge->getID());
+                }
+            } catch (...) {
+                // Ignore edge access errors
+            }
         }
         
         // Write old route cost if available
