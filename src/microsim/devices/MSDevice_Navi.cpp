@@ -468,8 +468,8 @@ MSDevice_Navi::writeRoute(const MSNaviEngine::RerouteResult& result, const SUMOT
             }
         }
         
-        // Write old route cost if available
-        if (writeCosts && result.oldCost > 0) {
+        // Write old route cost if available (write even if 0 for onInit cases)
+        if (writeCosts) {
             routeOut.writeAttr("oldCost", result.oldCost);
         }
         
@@ -495,7 +495,19 @@ MSDevice_Navi::writeRoute(const MSNaviEngine::RerouteResult& result, const SUMOT
             
             // Write cost and probability
             if (writeCosts) {
-                routeOut.writeAttr(SUMO_ATTR_COST, alt.cost);
+                // Use cost from alternative (calculated during routing), not from route object
+                // The route object may have default cost of -1 if not set
+                double routeCost = alt.cost;
+                // If alternative cost is invalid, try to get it from route object as fallback
+                if (routeCost < 0 && alt.route != nullptr) {
+                    routeCost = alt.route->getCosts();
+                }
+                routeOut.writeAttr(SUMO_ATTR_COST, routeCost);
+                
+                // Calculate and write savings (oldCost - newCost)
+                // Savings can be negative (onInit case when oldCost is 0)
+                double savings = result.oldCost - routeCost;
+                routeOut.writeAttr(SUMO_ATTR_SAVINGS, savings);
             }
             routeOut.writeAttr(SUMO_ATTR_PROB, alt.probability);
             routeOut.writeAttr("selected", alt.selected ? "true" : "false");

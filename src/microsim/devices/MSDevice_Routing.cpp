@@ -139,6 +139,14 @@ MSDevice_Routing::checkOptions(OptionsCont& oc) {
 void
 MSDevice_Routing::buildVehicleDevices(SUMOVehicle& v, std::vector<MSVehicleDevice*>& into) {
     const OptionsCont& oc = OptionsCont::getOptions();
+    
+    // Skip rerouting device if navi device is enabled for this vehicle
+    // Navi device provides its own routing functionality
+    const bool naviEquip = equippedByDefaultAssignmentOptions(oc, "navi", v, false);
+    if (naviEquip) {
+        return;  // Don't assign rerouting device when navi is present
+    }
+    
     const bool equip = equippedByDefaultAssignmentOptions(oc, "rerouting", v, false);
     if (v.getParameter().wasSet(VEHPARS_FORCE_REROUTE) || equip) {
         // route computation is enabled

@@ -624,6 +624,7 @@ MSNaviEngine::findKShortestPaths(const MSEdge* from, const MSEdge* to,
                     }
                     StopParVector stops;
                     MSRoute* route = new MSRoute("navi_" + vehicle.getID() + "_0", edges, false, nullptr, stops);
+                    route->setCosts(cost);  // Set cost on route object to avoid default -1
                     alternatives.push_back(RouteAlternative(ConstMSRoutePtr(route), cost));
                 }
             } catch (...) {
@@ -742,6 +743,7 @@ MSNaviEngine::findKShortestPaths(const MSEdge* from, const MSEdge* to,
             try {
                 StopParVector stops;
                 MSRoute* route = new MSRoute("navi_" + vehicle.getID() + "_" + toString(routeIndex), edges, false, nullptr, stops);
+                route->setCosts(cost);  // Set cost on route object to avoid default -1
                 ConstMSRoutePtr routePtr(route);
                 alternatives.push_back(RouteAlternative(routePtr, cost));
                 routeIndex++;
