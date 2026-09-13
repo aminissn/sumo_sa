@@ -54,6 +54,7 @@ vtypeprobe:vtypeprobe.xml
 personroutes:personroutes.xml
 vehroutes:vehroutes.xml
 vehroutes_ignore_arrival:vehroutes_ignore_arrival.xml
+odroutes:odroutes.xml
 tls_state:tls_state.xml
 tls_switch:tls_switch.xml
 tls_state_switch:tls_state_switch.xml
@@ -170,6 +171,7 @@ tripinfosSuffix:<!--{[->]}-->
 tripinfosPrefixSuffix:<!--{[->]}-->
 vtypeprobe:<!--{[->]}-->
 vehroutes:^<!--{[->]}-->
+odroutes:<!--{[->]}-->
 personroutes:^<!--{[->]}-->
 fcd:<!--{[->]}-->
 person_fcd:<!--{[->]}-->

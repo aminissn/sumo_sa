@@ -1,0 +1,11 @@
+# aggregated route flows for each origin-destination (TAZ) pair, the TAZ are determined from the loaded TAZ definitions
+basic
+
+# aggregation intervals and counting of vehicles that have not arrived at simulation end
+period_unfinished
+
+# aggregation by departure and arrival edge despite loaded TAZ
+edges
+
+# without loaded TAZ the aggregation is by departure and arrival edge
+no_taz

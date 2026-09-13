@@ -31,6 +31,7 @@
 #include "MSStop.h"
 #include <microsim/devices/MSVehicleDevice.h>
 #include <microsim/devices/MSDevice_Tripinfo.h>
+#include <microsim/output/MSODRouteExport.h>
 #include <utils/common/FileHelpers.h>
 #include <utils/common/Named.h>
 #include <utils/common/RGBColor.h>
@@ -164,6 +165,9 @@ MSVehicleControl::removePending() {
         myTotalTravelTime += STEPS2TIME(MSNet::getInstance()->getCurrentTimeStep() - veh->getDeparture());
         myRunningVehNo--;
         MSNet::getInstance()->informVehicleStateListener(veh, MSNet::VehicleState::ARRIVED);
+        if (MSODRouteExport::active()) {
+            MSODRouteExport::addVehicle(*veh);
+        }
         // vehicle is equipped with tripinfo device (not all vehicles are)
         const bool hasTripinfo = veh->getDevice(typeid(MSDevice_Tripinfo)) != nullptr;
         for (MSVehicleDevice* const dev : veh->getDevices()) {

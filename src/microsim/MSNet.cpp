@@ -88,6 +88,7 @@
 #include <microsim/output/MSXMLRawOut.h>
 #include <microsim/output/MSAmitranTrajectories.h>
 #include <microsim/output/MSStopOut.h>
+#include <microsim/output/MSODRouteExport.h>
 #include <microsim/transportables/MSPModel.h>
 #include <microsim/transportables/MSPerson.h>
 #include <microsim/traffic_lights/MSTrafficLightLogic.h>
@@ -767,6 +768,9 @@ MSNet::closeSimulation(SUMOTime start, const std::string& reason) {
         MSStopOut::getInstance()->generateOutputForUnfinished();
     }
     MSDevice_Vehroutes::writePendingOutput(OptionsCont::getOptions().getBool("vehroute-output.write-unfinished"));
+    if (MSODRouteExport::active()) {
+        MSODRouteExport::finish(myStep);
+    }
     if (OptionsCont::getOptions().getBool("tripinfo-output.write-unfinished")) {
         MSDevice_Tripinfo::generateOutputForUnfinished();
     }
@@ -1069,6 +1073,7 @@ MSNet::clearAll() {
     MSDevice_SSM::cleanup();
     MSDevice_ToC::cleanup();
     MSStopOut::cleanup();
+    MSODRouteExport::cleanup();
     MSRailSignalConstraint::cleanup();
     MSRailSignalControl::cleanup();
     MSDriveWay::cleanup();
@@ -1166,6 +1171,11 @@ MSNet::writeOutput() {
         } else {
             MSFCDExport::write(OutputDevice::getDeviceByOption("fcd-output"), myStep);
         }
+    }
+
+    // aggregated route flows per origin-destination pair
+    if (MSODRouteExport::active()) {
+        MSODRouteExport::write(myStep);
     }
 
     // check emission dumps

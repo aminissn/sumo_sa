@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-09-14T01:47:00.139149+01:00 by Eclipse SUMO sumo v1.27.1-0000000000
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="net.net.xml"/>
+        <route-files value="input_routes.rou.xml"/>
+        <additional-files value="input_districts.taz.xml"/>
+    </input>
+
+    <output>
+        <od-route-output value="odroutes.xml"/>
+    </output>
+
+    <report>
+        <duration-log.disable value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+</sumoConfiguration>
+-->
+
+<odRoutes>
+    <interval begin="0.00" end="424.00">
+        <tazRelation from="1" to="2" count="11">
+            <route id="1_2_0" edges="beg middle end rend" count="5" probability="0.45" length="2500.00"/>
+            <route id="1_2_1" edges="beg beg2left left left2end end rend" count="4" probability="0.36" length="3512.36"/>
+            <route id="1_2_2" edges="beg2left left left2end end" count="2" probability="0.18" length="2512.36"/>
+        </tazRelation>
+        <tazRelation from="middle" to="2" count="1">
+            <route id="middle_2_0" edges="middle end" count="1" probability="1.00" length="1500.00"/>
+        </tazRelation>
+    </interval>
+</odRoutes>

@@ -77,6 +77,7 @@ title: ChangeLog
 ### Enhancements
 
 - sumo
+  - Added option **--od-route-output** for writing the number of vehicles per used route for every origin-destination pair of TAZ or edges (also as csv/parquet)
   - Added carFollowModel NaSch (Nagel Schreckenberg) #12182 (Thanks to 
   - Added option **--slope-centered** to replicate simplified slope computation found in other simulators #18111
   - In carFollowModel 'Rail', curvature is now computed by integrating over a configurable distance (default 100m) to smooth piecewise linear geometry. #18138

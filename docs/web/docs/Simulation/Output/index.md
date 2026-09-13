@@ -134,6 +134,8 @@ Getting output for each junction can be streamlined by setting edgeData attribut
   information about battery state for electric vehicles
 - [collision output](Collisions.md):
   information about collisions among vehicles and between vehicles and pedestrians
+- [OD route output](ODRoutes.md):
+  number of vehicles per used route for every origin-destination (TAZ) pair
 
 ## simulation(network)-based information
 

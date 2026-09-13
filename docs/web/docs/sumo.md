@@ -129,6 +129,10 @@ configuration:
 | **--tripinfo-output.write-unfinished** {{DT_BOOL}} | Write tripinfo output for vehicles which have not arrived at simulation end; *default:* **false** |
 | **--tripinfo-output.write-undeparted** {{DT_BOOL}} | Write tripinfo output for vehicles which have not departed at simulation end because of depart delay; *default:* **false** |
 | **--personinfo-output** {{DT_FILE}} | Save personinfo and containerinfo to separate FILE |
+| **--od-route-output** {{DT_FILE}} | Save the number of vehicles that used each distinct route for every origin-destination (TAZ) pair into FILE |
+| **--od-route-output.period** {{DT_TIME}} | Aggregate od-route-output over intervals of the given length (by vehicle arrival time) instead of the whole simulation; *default:* **-1** |
+| **--od-route-output.write-unfinished** {{DT_BOOL}} | Count routes of vehicles which have not arrived at simulation end in od-route-output; *default:* **false** |
+| **--od-route-output.edges** {{DT_BOOL}} | Aggregate od-route-output by departure and arrival edge instead of TAZ (this is the default if no TAZ are loaded); *default:* **false** |
 | **--vehroute-output** {{DT_FILE}} | Save single vehicle route info into FILE |
 | **--vehroute-output.exit-times** {{DT_BOOL}} | Write the exit times for all edges; *default:* **false** |
 | **--vehroute-output.last-route** {{DT_BOOL}} | Write the last route only; *default:* **false** |

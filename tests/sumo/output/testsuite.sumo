@@ -45,6 +45,9 @@ vtypeprobe
 # Tests for routeprobe-output
 route_probe
 
+# Tests for od-route-output (route flows per origin-destination pair)
+od_routes
+
 # Tests for edge-based mean data output (aka "edgedump")
 meandata_edgebased
 

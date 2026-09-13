@@ -46,6 +46,8 @@ set(microsim_output_STAT_SRCS
    MSFullExport.h
    MSQueueExport.cpp
    MSQueueExport.h
+   MSODRouteExport.cpp
+   MSODRouteExport.h
    MSElecHybridExport.cpp
    MSElecHybridExport.h
 )

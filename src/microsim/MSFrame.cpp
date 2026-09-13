@@ -49,6 +49,7 @@
 #include <microsim/devices/MSDevice.h>
 #include <microsim/devices/MSDevice_Vehroutes.h>
 #include <microsim/output/MSStopOut.h>
+#include <microsim/output/MSODRouteExport.h>
 #include <microsim/traffic_lights/MSRailSignalControl.h>
 #include <utils/common/RandHelper.h>
 #include <utils/common/SystemFrame.h>
@@ -243,6 +244,18 @@ MSFrame::fillOptions() {
     oc.doRegister("personinfo-output", new Option_FileName());
     oc.addSynonyme("personinfo-output", "personinfo");
     oc.addDescription("personinfo-output", "Output", TL("Save personinfo and containerinfo to separate FILE"));
+
+    oc.doRegister("od-route-output", new Option_FileName());
+    oc.addDescription("od-route-output", "Output", TL("Save the number of vehicles that used each distinct route for every origin-destination (TAZ) pair into FILE"));
+
+    oc.doRegister("od-route-output.period", new Option_String("-1", "TIME"));
+    oc.addDescription("od-route-output.period", "Output", TL("Aggregate od-route-output over intervals of the given length (by vehicle arrival time) instead of the whole simulation"));
+
+    oc.doRegister("od-route-output.write-unfinished", new Option_Bool(false));
+    oc.addDescription("od-route-output.write-unfinished", "Output", TL("Count routes of vehicles which have not arrived at simulation end in od-route-output"));
+
+    oc.doRegister("od-route-output.edges", new Option_Bool(false));
+    oc.addDescription("od-route-output.edges", "Output", TL("Aggregate od-route-output by departure and arrival edge instead of TAZ (this is the default if no TAZ are loaded)"));
 
     oc.doRegister("vehroute-output", new Option_FileName());
     oc.addSynonyme("vehroute-output", "vehroutes");
@@ -931,6 +944,7 @@ MSFrame::buildStreams() {
 
     MSDevice_Vehroutes::init();
     MSStopOut::init();
+    MSODRouteExport::init();
 }
 
 

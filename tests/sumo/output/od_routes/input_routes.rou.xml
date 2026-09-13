@@ -1,0 +1,26 @@
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="DEFAULT_VEHTYPE" sigma="0"/>
+    <!-- three distinct edge sequences between taz 1 and taz 2 -->
+    <route id="viaMiddle" edges="beg middle end rend"/>
+    <route id="viaLeft" edges="beg beg2left left left2end end rend"/>
+    <route id="viaLeftShort" edges="beg2left left left2end end"/>
+    <!-- same edge sequence as viaMiddle under a different id: must be merged -->
+    <route id="viaMiddle2" edges="beg middle end rend"/>
+
+    <vehicle id="m0" depart="0" route="viaMiddle"/>
+    <vehicle id="l0" depart="5" route="viaLeft"/>
+    <vehicle id="m1" depart="10" route="viaMiddle2"/>
+    <vehicle id="s0" depart="15" route="viaLeftShort"/>
+    <vehicle id="m2" depart="20" route="viaMiddle"/>
+    <vehicle id="l1" depart="25" route="viaLeft"/>
+    <vehicle id="m3" depart="30" route="viaMiddle2"/>
+    <vehicle id="l2" depart="35" route="viaLeft"/>
+    <vehicle id="m4" depart="40" route="viaMiddle"/>
+    <vehicle id="s1" depart="45" route="viaLeftShort"/>
+    <!-- departure edge which is not part of any taz: keyed by the edge id -->
+    <vehicle id="noTaz" depart="50">
+        <route edges="middle end"/>
+    </vehicle>
+    <!-- late vehicle which does not arrive before the simulation end of the period_unfinished test -->
+    <vehicle id="late" depart="300" route="viaLeft"/>
+</routes>

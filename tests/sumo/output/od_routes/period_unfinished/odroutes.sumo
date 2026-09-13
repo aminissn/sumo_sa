@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-09-14T01:47:00.291088+01:00 by Eclipse SUMO sumo v1.27.1-0000000000
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="net.net.xml"/>
+        <route-files value="input_routes.rou.xml"/>
+        <additional-files value="input_districts.taz.xml"/>
+    </input>
+
+    <output>
+        <od-route-output value="odroutes.xml"/>
+        <od-route-output.period value="100"/>
+        <od-route-output.write-unfinished value="true"/>
+    </output>
+
+    <time>
+        <end value="320"/>
+    </time>
+
+    <report>
+        <duration-log.disable value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+</sumoConfiguration>
+-->
+
+<odRoutes>
+    <interval begin="0.00" end="100.00">
+        <tazRelation from="1" to="2" count="1">
+            <route id="1_2_0" edges="beg2left left left2end end" count="1" probability="1.00" length="2512.36"/>
+        </tazRelation>
+    </interval>
+    <interval begin="100.00" end="200.00">
+        <tazRelation from="1" to="2" count="9">
+            <route id="1_2_0" edges="beg middle end rend" count="5" probability="0.56" length="2500.00"/>
+            <route id="1_2_1" edges="beg beg2left left left2end end rend" count="3" probability="0.33" length="3512.36"/>
+            <route id="1_2_2" edges="beg2left left left2end end" count="1" probability="0.11" length="2512.36"/>
+        </tazRelation>
+        <tazRelation from="middle" to="2" count="1">
+            <route id="middle_2_0" edges="middle end" count="1" probability="1.00" length="1500.00"/>
+        </tazRelation>
+    </interval>
+    <interval begin="300.00" end="320.00">
+        <tazRelation from="1" to="2" count="1">
+            <route id="1_2_0" edges="beg beg2left left left2end end rend" count="1" probability="1.00" length="3512.36"/>
+        </tazRelation>
+    </interval>
+</odRoutes>

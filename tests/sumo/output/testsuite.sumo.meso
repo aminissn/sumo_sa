@@ -30,6 +30,9 @@ personinfo
 # Tests for vehroutes-output
 vehroutes
 
+# Tests for od-route-output (route flows per origin-destination pair)
+od_routes
+
 # Tests for stop-output
 stop-output
 
