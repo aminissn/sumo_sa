@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<tazs>
+    <taz id="1" edges="beg beg2left"/>
+    <taz id="2" edges="end rend"/>
+    <taz id="3" edges="middle"/>
+    <taz id="4" edges="left"/>
+    <!-- edge left2end belongs to no taz -->
+</tazs>

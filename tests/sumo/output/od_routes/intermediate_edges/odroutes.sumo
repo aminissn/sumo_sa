@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-09-14T11:54:59.137992+01:00 by Eclipse SUMO sumo v1.27.1-0000000000
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="net.net.xml"/>
+        <route-files value="input_routes.rou.xml"/>
+    </input>
+
+    <output>
+        <od-route-output value="odroutes.xml"/>
+        <od-route-output.intermediate value="true"/>
+        <od-route-output.filter-edges.input-file value="input_selection.txt"/>
+    </output>
+
+    <report>
+        <duration-log.disable value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+</sumoConfiguration>
+-->
+
+<odRoutes>
+    <interval begin="0.00" end="424.00">
+        <edgeRelation from="beg" to="end" count="9">
+            <route id="beg_end_0" edges="beg middle end" count="5" probability="0.56" length="2000.00" traveltime="-1.00"/>
+            <route id="beg_end_1" edges="beg beg2left left left2end end" count="4" probability="0.44" length="3012.36" traveltime="-1.00"/>
+        </edgeRelation>
+        <edgeRelation from="beg" to="left" count="4">
+            <route id="beg_left_0" edges="beg beg2left left" count="4" probability="1.00" length="2009.27" traveltime="-1.00"/>
+        </edgeRelation>
+        <edgeRelation from="left" to="end" count="6">
+            <route id="left_end_0" edges="left left2end end" count="6" probability="1.00" length="2009.27" traveltime="-1.00"/>
+        </edgeRelation>
+    </interval>
+</odRoutes>

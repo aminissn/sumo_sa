@@ -21,6 +21,7 @@ copy_test_path:input_definition.def.xml
 copy_test_path:input_definition2.def.xml
 copy_test_path:input_trips.trips.xml
 copy_test_path:input_districts.taz.xml
+copy_test_path:input_districts_via.taz.xml
 copy_test_path:busnet.net.xml
 copy_test_path:sumo.sumocfg
 copy_test_path:settings.xml

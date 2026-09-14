@@ -14,6 +14,8 @@ The following sub-options are available:
 | **--od-route-output.period** {{DT_TIME}} | Aggregate over intervals of the given length (by vehicle arrival time) instead of the whole simulation; *default:* **-1** |
 | **--od-route-output.write-unfinished** {{DT_BOOL}} | Also count the routes of vehicles which have departed but not yet arrived at simulation end; *default:* **false** |
 | **--od-route-output.edges** {{DT_BOOL}} | Aggregate by departure and arrival edge instead of TAZ; *default:* **false** |
+| **--od-route-output.intermediate** {{DT_BOOL}} | Also count the sub-routes between all intermediate TAZ (or edges) along each route; *default:* **false** |
+| **--od-route-output.filter-edges.input-file** {{DT_FILE}} | Restrict the origin and destination edges to the edge selection from the given file (edge mode only) |
 
 ## Origin and destination
 
@@ -24,6 +26,15 @@ The origin and destination of a vehicle are derived from the first and the last 
 - If no TAZ are loaded or option **--od-route-output.edges** is set, the departure and arrival edge ids are used directly and the output element is `edgeRelation`.
 
 Vehicles are counted once when they arrive. Routes with the same sequence of edges are merged, regardless of their route ids.
+
+## Intermediate pairs
+
+By default only the pair of origin and destination of the complete trip is counted. With option **--od-route-output.intermediate** every vehicle is additionally counted for all pairs of zones it passes on its way, using the sub-route between them:
+
+- In TAZ mode, for every pair of TAZ (Z1, Z2) where the first edge of Z1 (as source edge) lies before the last edge of Z2 (as sink edge) on the route, the sub-route between these two edges is counted for the relation Z1 to Z2. A vehicle from TAZ *o* via TAZ *1* to TAZ *d* therefore contributes to the relations *o-d*, *o-1* and *1-d*. Edges that do not belong to any TAZ only act as departure and arrival edge, they are not used as intermediate origin or destination. Intra-zonal pairs (Z1 = Z2) are only counted for complete trips.
+- In edge mode, every pair of edges (E1 before E2) of the route is counted with the sub-route from E1 to E2. Since this grows quadratically with the route length, the option **--od-route-output.filter-edges.input-file** should be used to restrict the origin and destination edges to the edges of interest (one edge id per line, an [edge selection](../../Netedit/editModesCommon.md#selection_operations) file with `edge:` prefixes is accepted as well). The filter also applies without **--od-route-output.intermediate**, in which case only trips that depart and arrive on selected edges are counted.
+
+The attribute `traveltime` is only known for complete trips. Sub-routes that never correspond to a complete trip report `traveltime="-1.00"`.
 
 As with all outputs, setting the file extension to *.csv* or *.parquet* writes the same data in [tabular form](../../TabularOutputs.md).
 Since counting happens only on vehicle arrival, the output has no measurable impact on the simulation speed.
@@ -74,4 +85,4 @@ The routes of one relation are sorted by descending count.
 | **count**       | #          | Number of vehicles that used this route                                      |
 | **probability** | [0,1]      | Share of this route among all vehicles of the relation                       |
 | **length**      | m          | Length of the route (sum of edge lengths, including internal edges if used)  |
-| **traveltime**  | s          | Mean travel time (departure to arrival) of the vehicles that completed this route; -1 if none did (only possible with **--od-route-output.write-unfinished**) |
+| **traveltime**  | s          | Mean travel time (departure to arrival) of the vehicles that completed this route as their full trip; -1 if none did (sub-routes with **--od-route-output.intermediate**, or vehicles counted with **--od-route-output.write-unfinished**) |

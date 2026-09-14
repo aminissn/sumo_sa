@@ -257,6 +257,12 @@ MSFrame::fillOptions() {
     oc.doRegister("od-route-output.edges", new Option_Bool(false));
     oc.addDescription("od-route-output.edges", "Output", TL("Aggregate od-route-output by departure and arrival edge instead of TAZ (this is the default if no TAZ are loaded)"));
 
+    oc.doRegister("od-route-output.intermediate", new Option_Bool(false));
+    oc.addDescription("od-route-output.intermediate", "Output", TL("Also count the sub-routes between all intermediate TAZ (or edges) along each route in od-route-output"));
+
+    oc.doRegister("od-route-output.filter-edges.input-file", new Option_FileName());
+    oc.addDescription("od-route-output.filter-edges.input-file", "Output", TL("Restrict the origin and destination edges of od-route-output to the edge selection from the given input file (edge mode only)"));
+
     oc.doRegister("vehroute-output", new Option_FileName());
     oc.addSynonyme("vehroute-output", "vehroutes");
     oc.addDescription("vehroute-output", "Output", TL("Save single vehicle route info into FILE"));

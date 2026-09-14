@@ -133,6 +133,8 @@ configuration:
 | **--od-route-output.period** {{DT_TIME}} | Aggregate od-route-output over intervals of the given length (by vehicle arrival time) instead of the whole simulation; *default:* **-1** |
 | **--od-route-output.write-unfinished** {{DT_BOOL}} | Count routes of vehicles which have not arrived at simulation end in od-route-output; *default:* **false** |
 | **--od-route-output.edges** {{DT_BOOL}} | Aggregate od-route-output by departure and arrival edge instead of TAZ (this is the default if no TAZ are loaded); *default:* **false** |
+| **--od-route-output.intermediate** {{DT_BOOL}} | Also count the sub-routes between all intermediate TAZ (or edges) along each route in od-route-output; *default:* **false** |
+| **--od-route-output.filter-edges.input-file** {{DT_FILE}} | Restrict the origin and destination edges of od-route-output to the edge selection from the given input file (edge mode only) |
 | **--vehroute-output** {{DT_FILE}} | Save single vehicle route info into FILE |
 | **--vehroute-output.exit-times** {{DT_BOOL}} | Write the exit times for all edges; *default:* **false** |
 | **--vehroute-output.last-route** {{DT_BOOL}} | Write the last route only; *default:* **false** |

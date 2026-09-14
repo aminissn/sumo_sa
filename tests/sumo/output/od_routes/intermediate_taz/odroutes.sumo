@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-09-14T11:54:58.985230+01:00 by Eclipse SUMO sumo v1.27.1-0000000000
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="net.net.xml"/>
+        <route-files value="input_routes.rou.xml"/>
+        <additional-files value="input_districts_via.taz.xml"/>
+    </input>
+
+    <output>
+        <od-route-output value="odroutes.xml"/>
+        <od-route-output.intermediate value="true"/>
+    </output>
+
+    <report>
+        <duration-log.disable value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+</sumoConfiguration>
+-->
+
+<odRoutes>
+    <interval begin="0.00" end="424.00">
+        <tazRelation from="1" to="2" count="11">
+            <route id="1_2_0" edges="beg middle end rend" count="5" probability="0.45" length="2500.00" traveltime="127.00"/>
+            <route id="1_2_1" edges="beg beg2left left left2end end rend" count="4" probability="0.36" length="3512.36" traveltime="138.25"/>
+            <route id="1_2_2" edges="beg2left left left2end end" count="2" probability="0.18" length="2512.36" traveltime="95.00"/>
+        </tazRelation>
+        <tazRelation from="1" to="3" count="5">
+            <route id="1_3_0" edges="beg middle" count="5" probability="1.00" length="1500.00" traveltime="-1.00"/>
+        </tazRelation>
+        <tazRelation from="1" to="4" count="6">
+            <route id="1_4_0" edges="beg beg2left left" count="4" probability="0.67" length="2009.27" traveltime="-1.00"/>
+            <route id="1_4_1" edges="beg2left left" count="2" probability="0.33" length="1509.27" traveltime="-1.00"/>
+        </tazRelation>
+        <tazRelation from="3" to="2" count="6">
+            <route id="3_2_0" edges="middle end rend" count="5" probability="0.83" length="2000.00" traveltime="-1.00"/>
+            <route id="3_2_1" edges="middle end" count="1" probability="0.17" length="1500.00" traveltime="86.00"/>
+        </tazRelation>
+        <tazRelation from="4" to="2" count="6">
+            <route id="4_2_0" edges="left left2end end rend" count="4" probability="0.67" length="2509.27" traveltime="-1.00"/>
+            <route id="4_2_1" edges="left left2end end" count="2" probability="0.33" length="2009.27" traveltime="-1.00"/>
+        </tazRelation>
+    </interval>
+</odRoutes>

@@ -9,3 +9,9 @@ edges
 
 # without loaded TAZ the aggregation is by departure and arrival edge
 no_taz
+
+# sub-routes between all pairs of TAZ along each route
+intermediate_taz
+
+# sub-routes between all pairs of selected edges along each route
+intermediate_edges

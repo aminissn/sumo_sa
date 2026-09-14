@@ -21,6 +21,7 @@
 #include <config.h>
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include <utils/common/SUMOTime.h>
@@ -53,6 +54,9 @@ class SUMOVehicle;
  * toTaz are deliberately ignored. Edges which are not part of any TAZ are
  * reported with their own id. If no TAZ are loaded or option
  * --od-route-output.edges is set, the departure and arrival edges are used directly.
+ *
+ * With option --od-route-output.intermediate every pair of zones (or edges)
+ * along the route is counted as well, using the sub-route between them.
  */
 class MSODRouteExport {
 public:
@@ -94,11 +98,24 @@ private:
         std::map<std::vector<int>, RouteCount> routes;
     };
 
+    /// @brief the zone an edge belongs to
+    struct Zone {
+        std::string id;
+        /// @brief whether the id refers to a TAZ (false: the edge id is used as fallback)
+        bool isTaz = false;
+    };
+
     /// @brief writes the collected counts for the given interval and clears them
     static void writeInterval(SUMOTime begin, SUMOTime end);
 
-    /// @brief returns the origin (departure edge) or destination (arrival edge) id for the given edge
-    static const std::string& getZone(const MSEdge* edge, bool origin);
+    /// @brief determines the aggregation mode and loads the edge filter (needs the loaded network)
+    static void initOnce();
+
+    /// @brief returns the origin (source) or destination (sink) zone for the given edge
+    static const Zone& getZone(const MSEdge* edge, bool origin);
+
+    /// @brief counts the sub-route between the route positions i and j (inclusive) for the given origin and destination
+    static void addSubRoute(const MSRoute& route, int i, int j, const std::string& from, const std::string& to, double travelTime);
 
 private:
     /// @brief whether the output is active
@@ -119,11 +136,20 @@ private:
     /// @brief whether the edges shall be mapped to TAZ (-1: not yet determined, 0: use edges, 1: use TAZ)
     static int myUseTaz;
 
-    /// @brief cached mapping of departure edges to origin ids
-    static std::map<const MSEdge*, std::string> myOrigins;
+    /// @brief whether all intermediate zone / edge pairs along the route shall be counted
+    static bool myIntermediate;
 
-    /// @brief cached mapping of arrival edges to destination ids
-    static std::map<const MSEdge*, std::string> myDestinations;
+    /// @brief whether the edge filter is active
+    static bool myHaveEdgeFilter;
+
+    /// @brief the edges which may serve as origin or destination (edge mode only)
+    static std::set<const MSEdge*> myEdgeFilter;
+
+    /// @brief cached mapping of edges to origin zones (source edges)
+    static std::map<const MSEdge*, Zone> myOrigins;
+
+    /// @brief cached mapping of edges to destination zones (sink edges)
+    static std::map<const MSEdge*, Zone> myDestinations;
 
     /// @brief the collected counts of the current interval, keyed by (fromTaz, toTaz)
     static std::map<std::pair<std::string, std::string>, ODCount> myCounts;
