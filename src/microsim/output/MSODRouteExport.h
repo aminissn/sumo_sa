@@ -65,7 +65,7 @@ public:
     }
 
     /// @brief Registers an arrived (or, at simulation end, still running) vehicle
-    static void addVehicle(const SUMOVehicle& veh);
+    static void addVehicle(const SUMOVehicle& veh, bool arrived = true);
 
     /// @brief Called after every simulation step, writes the interval if a period is set and complete
     static void write(SUMOTime step);
@@ -82,6 +82,10 @@ private:
         ConstMSEdgeVector edges;
         double length = 0;
         int count = 0;
+        /// @brief number of vehicles which completed the route (used for the mean travel time)
+        int arrived = 0;
+        /// @brief sum of travel times of the arrived vehicles
+        double travelTime = 0;
     };
 
     /// @brief per origin-destination counts; routes are keyed by the numerical ids of their edges

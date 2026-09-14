@@ -112,7 +112,7 @@ MSODRouteExport::getZone(const MSEdge* edge, const bool origin) {
 
 
 void
-MSODRouteExport::addVehicle(const SUMOVehicle& veh) {
+MSODRouteExport::addVehicle(const SUMOVehicle& veh, const bool arrived) {
     const MSRoute& route = veh.getRoute();
     const ConstMSEdgeVector& edges = route.getEdges();
     if (edges.empty()) {
@@ -134,6 +134,10 @@ MSODRouteExport::addVehicle(const SUMOVehicle& veh) {
         rc.length = route.getDistanceBetween(0., edges.back()->getLength(), route.begin(), route.end() - 1, includeInternalLengths);
     }
     rc.count++;
+    if (arrived) {
+        rc.arrived++;
+        rc.travelTime += STEPS2TIME(MSNet::getInstance()->getCurrentTimeStep() - veh.getDeparture());
+    }
 }
 
 
@@ -156,7 +160,7 @@ MSODRouteExport::finish(const SUMOTime step) {
         for (MSVehicleControl::constVehIt it = vc.loadedVehBegin(); it != vc.loadedVehEnd(); ++it) {
             const SUMOVehicle* const veh = it->second;
             if (veh->hasDeparted() && !veh->hasArrived()) {
-                addVehicle(*veh);
+                addVehicle(*veh, false);
             }
         }
     }
@@ -195,6 +199,8 @@ MSODRouteExport::writeInterval(const SUMOTime begin, const SUMOTime end) {
             od.writeAttr(SUMO_ATTR_COUNT, rc->count);
             od.writeAttr(SUMO_ATTR_PROB, (double)rc->count / (double)odCount.count);
             od.writeAttr(SUMO_ATTR_LENGTH, rc->length);
+            // mean travel time of the arrived vehicles, -1 if none arrived (write-unfinished)
+            od.writeAttr(SUMO_ATTR_TRAVELTIME, rc->arrived > 0 ? rc->travelTime / (double)rc->arrived : -1.);
             od.closeTag();
         }
         od.closeTag();

@@ -36,9 +36,9 @@ The generated XML file looks like this:
 <odRoutes>
     <interval begin="0.00" end="300.00">
         <tazRelation from="1" to="2" count="10">
-            <route id="1_2_0" edges="beg middle end rend" count="5" probability="0.50" length="2500.00"/>
-            <route id="1_2_1" edges="beg beg2left left left2end end rend" count="3" probability="0.30" length="3512.36"/>
-            <route id="1_2_2" edges="beg2left left left2end end" count="2" probability="0.20" length="2512.36"/>
+            <route id="1_2_0" edges="beg middle end rend" count="5" probability="0.50" length="2500.00" traveltime="134.20"/>
+            <route id="1_2_1" edges="beg beg2left left left2end end rend" count="3" probability="0.30" length="3512.36" traveltime="180.67"/>
+            <route id="1_2_2" edges="beg2left left left2end end" count="2" probability="0.20" length="2512.36" traveltime="132.50"/>
         </tazRelation>
         ...
     </interval>
@@ -74,3 +74,4 @@ The routes of one relation are sorted by descending count.
 | **count**       | #          | Number of vehicles that used this route                                      |
 | **probability** | [0,1]      | Share of this route among all vehicles of the relation                       |
 | **length**      | m          | Length of the route (sum of edge lengths, including internal edges if used)  |
+| **traveltime**  | s          | Mean travel time (departure to arrival) of the vehicles that completed this route; -1 if none did (only possible with **--od-route-output.write-unfinished**) |
